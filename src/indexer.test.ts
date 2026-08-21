@@ -10,12 +10,16 @@ import { describe, it } from "vitest";
 import { createTestIndexer } from "envio";
 
 describe("Uniswap V4 Indexer", () => {
-  it("Does not create Ticks for ModifyLiquidity on unknown pools", async (t) => {
+  // Skipped while Ethereum mainnet (chain 1) is commented out of config.yaml —
+  // only Base Sepolia and Robinhood are currently indexed. Re-enable together
+  // with the chain (the @ts-expect-error below will error once it's back).
+  it.skip("Does not create Ticks for ModifyLiquidity on unknown pools", async (t) => {
     const indexer = createTestIndexer();
 
     t.expect(
       await indexer.process({
         chains: {
+          // @ts-expect-error -- chain 1 is disabled in config.yaml
           1: { startBlock: 24240005, endBlock: 24240005 },
         },
       }),

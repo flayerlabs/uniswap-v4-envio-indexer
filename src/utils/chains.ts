@@ -20,6 +20,7 @@ export enum ChainId {
   INK = 57073,
   MEGAETH = 4326,
   ROBINHOOD = 4663,
+  BASE_SEPOLIA = 84532,
 }
 
 // Native token details interface
@@ -54,7 +55,11 @@ export interface StaticTokenDefinition {
 // Chain-specific configurations
 // Note: All token and pool addresses should be lowercase
 
-export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } = {
+// Keyed wider than the active EvmChainId union so configs for chains that are
+// currently commented out of config.yaml are retained and type-check.
+export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } & {
+  [chainId: number]: ChainConfig;
+} = {
   [ChainId.MAINNET]: {
     poolManagerAddress: "0x000000000004444c5dc75cb358380d2e3de08a90",
     stablecoinWrappedNativePoolId:
@@ -574,6 +579,33 @@ export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } = {
       "0x0000000000000000000000000000000000000000", // Native ETH
       "0x0bd7d308f8e1639fab988df18a8011f41eacad73", // WETH
       "0x5fc5360d0400a0fd4f2af552add042d716f1d168", // USDG
+    ],
+    tokenOverrides: [],
+    poolsToSkip: [],
+    nativeTokenDetails: {
+      symbol: "ETH",
+      name: "Ethereum",
+      decimals: BigInt(18),
+    },
+  },
+  [ChainId.BASE_SEPOLIA]: {
+    poolManagerAddress: "0x05e73354cfdd6745c338b50bcfdfa3aa6fa03408",
+    // Native ETH/USDC 0.05% pool (fee 500, tickSpacing 10, no hooks) — the only
+    // ETH/USDC pool on the testnet whose price tracks the real ETH market price.
+    stablecoinWrappedNativePoolId:
+      "0x32d1cea8e825dbdafdb17d5f556606e1ac0a1a4477744baba03d9fc0b62d4eb2",
+    stablecoinIsToken0: false, // currency0 = native ETH (0x0), currency1 = USDC
+    wrappedNativeAddress: "0x4200000000000000000000000000000000000006", // WETH
+    // Testnet pools hold tiny amounts of ETH, so the mainnet-style 1 ETH floor
+    // would disqualify every pool from pricing.
+    minimumNativeLocked: new BigDecimal("0.01"),
+    stablecoinAddresses: [
+      "0x036cbd53842c5426634e7929541ec2318f3dcf7e", // USDC (Circle testnet)
+    ],
+    whitelistTokens: [
+      "0x0000000000000000000000000000000000000000", // Native ETH
+      "0x4200000000000000000000000000000000000006", // WETH
+      "0x036cbd53842c5426634e7929541ec2318f3dcf7e", // USDC (Circle testnet)
     ],
     tokenOverrides: [],
     poolsToSkip: [],
