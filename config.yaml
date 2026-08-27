@@ -69,8 +69,10 @@ chains:
   #     - name: PoolManager
   #       address:
   #         - 0x498581ff718922c3f8e6a244956af099b2652b2b
+  # Arbitrum One is served by the canonical Uniswap v4 subgraph on The Graph
+  # (G5TsTKNi8yhPSV7kycaE23oWbqv9zzNqR49FoEQjzq1r), so it is not indexed here.
   # - id: 42161
-  #   start_block: 0
+  #   start_block: 297842872 # PoolManager deployment block
   #   contracts:
   #     - name: PositionManager
   #       address:
@@ -105,15 +107,6 @@ chains:
   #     - name: PoolManager
   #       address:
   #         - 0x0575338e4c17006ae181b47900a84404247ca30f
-  # - id: 57073
-  #   start_block: 4580556
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x1b35d13a2e2528f192637f14b05f0dc0e7deb566
-  #     - name: PoolManager
-  #       address:
-  #         - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
   # - id: 1868
   #   hypersync_config:
   #     url: https://1868.hypersync.xyz
@@ -197,19 +190,25 @@ chains:
   #     - name: PoolManager
   #       address:
   #         - 0xacb7e78fa05d562e0a5d3089ec896d57d057d38e
-  # Base Sepolia
-  - id: 84532
-    start_block: 19088197 # PoolManager deployment block
-    contracts:
-      - name: PositionManager
-        address:
-          - 0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80
-      - name: PoolManager
-        address:
-          - 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408
-  # Robinhood
+  # Base Sepolia — disabled (2026-08-27): NFTX no longer needs it. Kept so it can
+  # be re-enabled by uncommenting; the start block is the NFTX protocol
+  # deployment there (42616213), the same pin as the NFTX indexer.
+  # - id: 84532
+  #   start_block: 42616213
+  #   contracts:
+  #     - name: PositionManager
+  #       address:
+  #         - 0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80
+  #     - name: PoolManager
+  #       address:
+  #         - 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408
+  # Robinhood Chain. Starts 100 blocks below the NFTX protocol deployment
+  # (35354594-35354959) rather than at chain genesis: only NFTX's pools matter
+  # here and all of them are initialised after the protocol lands, so the earlier
+  # range is pure overhead. Same pin as the NFTX indexer; pre-existing pools are
+  # skipped by the handlers.
   - id: 4663
-    start_block: 9070
+    start_block: 35354494
     contracts:
       - name: PositionManager
         address:
@@ -217,3 +216,20 @@ chains:
       - name: PoolManager
         address:
           - 0x8366a39cc670b4001a1121b8f6a443a643e40951
+  # Ink — Uniswap's deterministic v4 deployment; no v4 Ink Uniswap subgraph exists on The
+  # Graph, so this is the only pool-data source for the chain. The PoolManager landed
+  # at block 4580556, but we only need NFTX's pools, all of which are initialised
+  # after the NFTX protocol deployment (blocks 54329001-54329039, 2026-08-27), so
+  # this starts 100 blocks below that deploy — the same pin as the NFTX indexer —
+  # rather than replaying ~50M blocks of every other v4 pool on the chain. Events
+  # from pools initialised before the start block are skipped by the handlers
+  # (no Pool entity), not mis-indexed.
+  - id: 57073
+    start_block: 54328901
+    contracts:
+      - name: PositionManager
+        address:
+          - 0x1b35d13a2e2528f192637f14b05f0dc0e7deb566
+      - name: PoolManager
+        address:
+          - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
