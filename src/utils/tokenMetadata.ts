@@ -52,6 +52,8 @@ const getRpcUrl = (chainId: number): string => {
   switch (chainId) {
     case 1:
       return process.env.ENVIO_MAINNET_RPC_URL || "https://eth.drpc.org";
+    case 11155111:
+      return process.env.ENVIO_SEPOLIA_RPC_URL || "https://sepolia.drpc.org";
     case 42161:
       return process.env.ENVIO_ARBITRUM_RPC_URL || "https://arbitrum.drpc.org";
     case 10:

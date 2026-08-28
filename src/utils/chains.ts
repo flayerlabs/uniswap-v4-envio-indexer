@@ -21,6 +21,7 @@ export enum ChainId {
   MEGAETH = 4326,
   ROBINHOOD = 4663,
   BASE_SEPOLIA = 84532,
+  SEPOLIA = 11155111,
 }
 
 // Native token details interface
@@ -579,6 +580,39 @@ export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } & {
       "0x0000000000000000000000000000000000000000", // Native ETH
       "0x0bd7d308f8e1639fab988df18a8011f41eacad73", // WETH
       "0x5fc5360d0400a0fd4f2af552add042d716f1d168", // USDG
+    ],
+    tokenOverrides: [],
+    poolsToSkip: [],
+    nativeTokenDetails: {
+      symbol: "ETH",
+      name: "Ethereum",
+      decimals: BigInt(18),
+    },
+  },
+  [ChainId.SEPOLIA]: {
+    poolManagerAddress: "0xe03a1074c86cfedd5c142c4f04f1a1536e203543",
+    // ETH/USDC pool, taken verbatim from the upstream subgraph's sepolia config
+    // (Uniswap/v4-subgraph src/utils/chains.ts:88). It was initialised well
+    // before this chain's start block, so no Pool row exists for it and
+    // `ethPriceUSD` stays 0 — the same as every other chain here. Kept rather
+    // than zeroed so the anchor is already correct if the range ever widens.
+    stablecoinWrappedNativePoolId:
+      "0xabdb9820d36431e092c155f7151c4c781f09fb4e1b7894fa918a0aadcac87e16",
+    stablecoinIsToken0: true,
+    wrappedNativeAddress: "0xfff9976782d46cc05630d1f6ebab18b2324d6b14", // WETH
+    // Upstream uses 1 ETH here, but NFTX's Sepolia pools hold testnet dust and
+    // that floor would disqualify every one of them from pricing — the same
+    // reasoning as the BASE_SEPOLIA entry below.
+    minimumNativeLocked: new BigDecimal("0.01"),
+    stablecoinAddresses: [
+      "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238", // USDC
+      "0xaa8e23fb1079ea71e0a56f48a2aa51851d8433d0", // USDT
+    ],
+    whitelistTokens: [
+      "0x0000000000000000000000000000000000000000", // Native ETH
+      "0xfff9976782d46cc05630d1f6ebab18b2324d6b14", // WETH
+      "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238", // USDC
+      "0xaa8e23fb1079ea71e0a56f48a2aa51851d8433d0", // USDT
     ],
     tokenOverrides: [],
     poolsToSkip: [],

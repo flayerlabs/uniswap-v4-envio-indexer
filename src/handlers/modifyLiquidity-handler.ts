@@ -9,6 +9,11 @@ import {
 import { convertTokenToDecimal, sanitizeBD } from "../utils";
 import { createInitialTick } from "../utils/tick";
 import { getChainConfig } from "../utils/chains";
+import {
+  loadPoolIntervals,
+  updatePoolDayData,
+  updatePoolHourData,
+} from "../utils/intervalUpdates";
 
 indexer.onEvent({ contract: "PoolManager", event: "ModifyLiquidity" }, async ({ event, context }) => {
   // Get chain config for pools to skip
@@ -44,7 +49,9 @@ indexer.onEvent({ contract: "PoolManager", event: "ModifyLiquidity" }, async ({ 
     ? `${event.chainId}_${existingPool.hooks}`
     : undefined;
 
-  const [existingToken0, existingToken1, bundle, existingPoolManager, existingHookStats] =
+  // `intervals` is loaded here, not at the point of use: Envio only batches
+  // `context.*.get()` calls made before the `isPreload` return below.
+  const [existingToken0, existingToken1, bundle, existingPoolManager, existingHookStats, intervals] =
     await Promise.all([
       context.Token.get(existingPool.token0),
       context.Token.get(existingPool.token1),
@@ -53,6 +60,7 @@ indexer.onEvent({ contract: "PoolManager", event: "ModifyLiquidity" }, async ({ 
         `${event.chainId}_${event.srcAddress}`
       ),
       hookStatsId ? context.HookStats.get(hookStatsId) : undefined,
+      loadPoolIntervals(context, poolId, event.block.timestamp),
     ]);
   if (!existingToken0 || !existingToken1 || !bundle) return;
 
@@ -188,6 +196,12 @@ indexer.onEvent({ contract: "PoolManager", event: "ModifyLiquidity" }, async ({ 
       token1.derivedETH.times(bundle.ethPriceUSD)
     ),
   };
+  // Interval data. A liquidity change carries no volume, so the buckets only
+  // take the end-of-period TVL/liquidity/price snapshot and a txCount bump —
+  // the same call shape as the upstream subgraph's modifyLiquidity mapping.
+  const poolHourData = updatePoolHourData(pool, intervals.hour, event.block.timestamp);
+  const poolDayData = updatePoolDayData(pool, intervals.day, event.block.timestamp);
+
   // Update PoolManager
   let poolManager = {
     ...existingPoolManager,
@@ -241,4 +255,6 @@ indexer.onEvent({ contract: "PoolManager", event: "ModifyLiquidity" }, async ({ 
   context.Pool.set(pool);
   context.Token.set(token0);
   context.Token.set(token1);
+  context.PoolHourData.set(poolHourData);
+  context.PoolDayData.set(poolDayData);
 });

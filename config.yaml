@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
-# touch: trigger Envio deployment (2026-08-21 #2)
+# touch: trigger Envio deployment (2026-08-28 #1)
 name: uniswap-v4-indexer
 contracts:
   - name: PoolManager
@@ -39,174 +39,47 @@ contracts:
           transaction_fields:
             - "hash"
             - "from"
+# This fork exists to serve NFTX's Uniswap v4 pool data, so it indexes exactly the
+# five chains NFTX v4 is deployed on. Every chain's `start_block` is the NFTX
+# protocol deployment on that chain — not the PoolManager deployment and not
+# genesis — because only pools that NFTX initialises matter here, and all of them
+# are created after the protocol lands. The blocks are copied verbatim from the
+# NFTX indexer (Flayer/Subgraph/config.yaml) so the two stay aligned.
+#
+# Events from pools initialised before the start block are skipped by the handlers
+# (`Pool` entity absent -> early return), not mis-indexed. One consequence is that
+# each chain's stablecoin/native pricing anchor pool predates the start block, so
+# `Bundle.ethPriceUSD` stays 0 and every USD-denominated field with it. That is
+# accepted: NFTX reads only the ETH-denominated fields (sqrtPrice, volumeToken0/1,
+# totalValueLockedToken0/1).
 chains:
-  # NOTE: only Base Sepolia (84532) and Robinhood (4663) are currently indexed.
-  # The remaining chains are temporarily disabled — uncomment to re-enable.
-  # - id: 1
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e
-  #     - name: PoolManager
-  #       address:
-  #         - "0x000000000004444c5dc75cB358380D2e3dE08A90"
-  # - id: 10
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x3C3Ea4B57a46241e54610e5f022e5c45859A1017
-  #     - name: PoolManager
-  #       address:
-  #         - 0x9a13F98Cb987694C9F086b1F5eB990EeA8264Ec3
-  # - id: 8453
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x7c5f5a4bbd8fd63184577525326123b519429bdc
-  #     - name: PoolManager
-  #       address:
-  #         - 0x498581ff718922c3f8e6a244956af099b2652b2b
-  # Arbitrum One is served by the canonical Uniswap v4 subgraph on The Graph
-  # (G5TsTKNi8yhPSV7kycaE23oWbqv9zzNqR49FoEQjzq1r), so it is not indexed here.
-  # - id: 42161
-  #   start_block: 297842872 # PoolManager deployment block
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xd88f38f930b7952f2db2432cb002e7abbf3dd869
-  #     - name: PoolManager
-  #       address:
-  #         - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
-  # - id: 137
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9
-  #     - name: PoolManager
-  #       address:
-  #         - 0x67366782805870060151383f4bbff9dab53e5cd6
-  # - id: 81457
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x4ad2f4cca2682cbb5b950d660dd458a1d3f1baad
-  #     - name: PoolManager
-  #       address:
-  #         - 0x1631559198a9e474033433b2958dabc135ab6446
-  # - id: 7777777
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xf66c7b99e2040f0d9b326b3b7c152e9663543d63
-  #     - name: PoolManager
-  #       address:
-  #         - 0x0575338e4c17006ae181b47900a84404247ca30f
-  # - id: 1868
-  #   hypersync_config:
-  #     url: https://1868.hypersync.xyz
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x1b35d13a2e2528f192637f14b05f0dc0e7deb566
-  #     - name: PoolManager
-  #       address:
-  #         - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
-  # - id: 43114
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xb74b1f14d2754acfcbbe1a221023a5cf50ab8acd
-  #     - name: PoolManager
-  #       address:
-  #         - 0x06380c0e0912312b5150364b9dc4542ba0dbbc85
-  # - id: 56
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x7a4a5c919ae2541aed11041a1aeee68f1287f95b
-  #     - name: PoolManager
-  #       address:
-  #         - 0x28e2ea090877bf75740558f6bfb36a5ffee9e9df
-  # - id: 130
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x4529a01c7a0410167c5740c487a8de60232617bf
-  #     - name: PoolManager
-  #       address:
-  #         - 0x1F98400000000000000000000000000000000004
-  # - id: 480
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xc585e0f504613b5fbf874f21af14c65260fb41fa
-  #     - name: PoolManager
-  #       address:
-  #         - 0xb1860d529182ac3bc1f51fa2abd56662b7d13f33
-  # - id: 143
-  #   start_block: 0
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x5b7ec4a94ff9bedb700fb82ab09d5846972f4016
-  #     - name: PoolManager
-  #       address:
-  #         - 0x188d586ddcf52439676ca21a244753fa19f9ea8e
-  # - id: 59144
-  #   start_block: 28974969
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xddcad5775b2816a87495f207731b3571d7ee3c76
-  #     - name: PoolManager
-  #       address:
-  #         - 0x248083fb965359d82b06c1f5322480dcfc1ad857
-  # - id: 42220
-  #   start_block: 43985160
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0xf7965f3981e4d5bc383bfbcb61501763e9068ca9
-  #     - name: PoolManager
-  #       address:
-  #         - 0x288dc841a52fca2707c6947b3a777c5e56cd87bc
-  # - id: 4326
-  #   start_block: 7009653
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x9ae0921e981aaa7308f176f8d4f9129b9247c89d
-  #     - name: PoolManager
-  #       address:
-  #         - 0xacb7e78fa05d562e0a5d3089ec896d57d057d38e
-  # Base Sepolia — disabled (2026-08-27): NFTX no longer needs it. Kept so it can
-  # be re-enabled by uncommenting; the start block is the NFTX protocol
-  # deployment there (42616213), the same pin as the NFTX indexer.
-  # - id: 84532
-  #   start_block: 42616213
-  #   contracts:
-  #     - name: PositionManager
-  #       address:
-  #         - 0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80
-  #     - name: PoolManager
-  #       address:
-  #         - 0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408
-  # Robinhood Chain. Starts 100 blocks below the NFTX protocol deployment
-  # (35354594-35354959) rather than at chain genesis: only NFTX's pools matter
-  # here and all of them are initialised after the protocol lands, so the earlier
-  # range is pure overhead. Same pin as the NFTX indexer; pre-existing pools are
-  # skipped by the handlers.
+  # Ethereum mainnet. The v3 protocol generation (nftx.v3 salt namespace) was
+  # deployed across blocks 25638238-25638272; PoolManager itself landed at
+  # 21688329, ~4M blocks earlier.
+  - id: 1
+    start_block: 25638238
+    contracts:
+      - name: PositionManager
+        address:
+          - 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e
+      - name: PoolManager
+        address:
+          - "0x000000000004444c5dc75cB358380D2e3dE08A90"
+  # Ethereum Sepolia. The protocol deployment spans blocks 11465794-11465822.
+  # Sepolia has no v4 pool whose price tracks the real ETH market, so its
+  # `stablecoinWrappedNativePoolId` is left unset in src/utils/chains.ts.
+  - id: 11155111
+    start_block: 11465794
+    contracts:
+      - name: PositionManager
+        address:
+          - 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4
+      - name: PoolManager
+        address:
+          - 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543
+  # Robinhood Chain — Arbitrum Nitro (Orbit), native currency ETH. The deployment
+  # spans blocks 35354594-35354959; pinned 100 below the first receipt because
+  # HyperSync filters by address server-side, so an over-wide range is nearly free.
   - id: 4663
     start_block: 35354494
     contracts:
@@ -216,20 +89,26 @@ chains:
       - name: PoolManager
         address:
           - 0x8366a39cc670b4001a1121b8f6a443a643e40951
-  # Ink — Uniswap's deterministic v4 deployment; no v4 Ink Uniswap subgraph exists on The
-  # Graph, so this is the only pool-data source for the chain. The PoolManager landed
-  # at block 4580556, but we only need NFTX's pools, all of which are initialised
-  # after the NFTX protocol deployment (blocks 54329001-54329039, 2026-08-27), so
-  # this starts 100 blocks below that deploy — the same pin as the NFTX indexer —
-  # rather than replaying ~50M blocks of every other v4 pool on the chain. Events
-  # from pools initialised before the start block are skipped by the handlers
-  # (no Pool entity), not mis-indexed.
+  # Ink — OP-stack L2 (Kraken). No v4 Ink subgraph exists on The Graph, so this is
+  # the only pool-data source for the chain. Deployment spans 54329001-54329039;
+  # PoolManager landed at 4580556, ~50M blocks earlier.
   - id: 57073
     start_block: 54328901
     contracts:
       - name: PositionManager
         address:
           - 0x1b35d13a2e2528f192637f14b05f0dc0e7deb566
+      - name: PoolManager
+        address:
+          - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
+  # Arbitrum One — Nitro, native currency ETH. Deployment spans
+  # 498892378-498892454; PoolManager landed at 297842872, ~200M blocks earlier.
+  - id: 42161
+    start_block: 498892278
+    contracts:
+      - name: PositionManager
+        address:
+          - 0xd88f38f930b7952f2db2432cb002e7abbf3dd869
       - name: PoolManager
         address:
           - 0x360e68faccca8ca495c1b759fd9eee466db9fb32

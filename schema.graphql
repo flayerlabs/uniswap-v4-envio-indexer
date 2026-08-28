@@ -199,3 +199,58 @@ type ModifyLiquidity  @index(fields: ["pool", ["timestamp", "DESC"]])
   tickUpper: BigInt! # upper tick of the position
   logIndex: BigInt! # index within the txn
 }
+
+# Per-pool time-bucketed aggregates, ported field-for-field from the upstream
+# Uniswap v4 subgraph (Uniswap/v4-subgraph schema.graphql PoolDayData/PoolHourData
+# + src/utils/intervalUpdates.ts). They exist so consumers can read windowed
+# volume and OHLC candles directly instead of replaying raw `Swap` rows — the
+# hosted Hasura endpoint exposes no `_aggregate` root fields and clamps every root
+# field to 1000 rows, which makes swap-replay lossy on busy pools.
+#
+# `open`/`high`/`low`/`close` are `token0Price` (token1 per token0), the upstream
+# convention, so a consumer inverts them exactly when the pool is flipped.
+# `pool` is a plain String foreign id rather than a `Pool!` reference, matching
+# `Swap.pool`, so it can be filtered with `_in` over a set of pool ids.
+type PoolHourData @index(fields: ["pool", ["periodStartUnix", "DESC"]]) {
+  id: ID! # <chainId>_<poolId>-<hourIndex>
+  chainId: BigInt!
+  periodStartUnix: BigInt! @index # unix timestamp for start of hour
+  pool: String! # Instead of Pool reference
+  liquidity: BigInt! # in range liquidity at end of period
+  sqrtPrice: BigInt! # current price tracker at end of period
+  token0Price: BigDecimal!
+  token1Price: BigDecimal!
+  tick: BigInt # current tick at end of period
+  tvlUSD: BigDecimal!
+  volumeToken0: BigDecimal!
+  volumeToken1: BigDecimal!
+  volumeUSD: BigDecimal!
+  feesUSD: BigDecimal!
+  txCount: BigInt!
+  open: BigDecimal!
+  high: BigDecimal!
+  low: BigDecimal!
+  close: BigDecimal!
+}
+
+type PoolDayData @index(fields: ["pool", ["date", "DESC"]]) {
+  id: ID! # <chainId>_<poolId>-<dayIndex>
+  chainId: BigInt!
+  date: BigInt! @index # unix timestamp for start of day
+  pool: String! # Instead of Pool reference
+  liquidity: BigInt!
+  sqrtPrice: BigInt!
+  token0Price: BigDecimal!
+  token1Price: BigDecimal!
+  tick: BigInt
+  tvlUSD: BigDecimal!
+  volumeToken0: BigDecimal!
+  volumeToken1: BigDecimal!
+  volumeUSD: BigDecimal!
+  feesUSD: BigDecimal!
+  txCount: BigInt!
+  open: BigDecimal!
+  high: BigDecimal!
+  low: BigDecimal!
+  close: BigDecimal!
+}

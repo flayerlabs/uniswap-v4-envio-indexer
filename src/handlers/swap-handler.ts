@@ -8,6 +8,11 @@ import { getTrackedAmountUSD, getNativePriceInUSD } from "../utils/pricing";
 import { safeDiv, sanitizeBD } from "../utils/index";
 import { findNativePerToken } from "../utils/pricing";
 import { sqrtPriceX96ToTokenPrices } from "../utils/pricing";
+import {
+  loadPoolIntervals,
+  updatePoolDayData,
+  updatePoolHourData,
+} from "../utils/intervalUpdates";
 
 indexer.onEvent({ contract: "PoolManager", event: "Swap" }, async ({ event, context }) => {
   const chainConfig = getChainConfig(event.chainId);
@@ -35,13 +40,17 @@ indexer.onEvent({ contract: "PoolManager", event: "Swap" }, async ({ event, cont
   const isHookedPool =
     pool.hooks !== "0x0000000000000000000000000000000000000000";
 
-  [token0, token1, poolHookStats] = await Promise.all([
+  // The interval buckets are read here rather than at the point of use: Envio
+  // only batches `context.*.get()` calls made before the `isPreload` return
+  // below, and these two would otherwise be issued after it.
+  let intervals;
+  [token0, token1, poolHookStats, intervals] = await Promise.all([
     context.Token.get(pool.token0),
     context.Token.get(pool.token1),
     isHookedPool
       ? context.HookStats.get(`${event.chainId}_${pool.hooks}`)
       : undefined,
-    ,
+    loadPoolIntervals(context, pool.id, event.block.timestamp),
   ]);
 
   if (!token0 || !token1) {
@@ -185,6 +194,28 @@ indexer.onEvent({ contract: "PoolManager", event: "Swap" }, async ({ event, cont
       pool.totalValueLockedETH.times(bundle.ethPriceUSD)
     ),
   };
+  // Interval data. Called with the already-updated pool so open/high/low/close
+  // reflect the post-swap price, matching the upstream subgraph where
+  // `Pool.load()` inside the updater sees the mutated entity.
+  const intervalDeltas = {
+    volumeToken0: amount0Abs,
+    volumeToken1: amount1Abs,
+    volumeUSD: amountTotalUSDTracked,
+    feesUSD,
+  };
+  const poolHourData = updatePoolHourData(
+    pool,
+    intervals.hour,
+    event.block.timestamp,
+    intervalDeltas
+  );
+  const poolDayData = updatePoolDayData(
+    pool,
+    intervals.day,
+    event.block.timestamp,
+    intervalDeltas
+  );
+
   // Update token0 data
   token0 = {
     ...token0,
@@ -275,6 +306,8 @@ indexer.onEvent({ contract: "PoolManager", event: "Swap" }, async ({ event, cont
   context.Swap.set(entity);
   context.Token.set(token0);
   context.Token.set(token1);
+  context.PoolHourData.set(poolHourData);
+  context.PoolDayData.set(poolDayData);
 
   poolManager = {
     ...poolManager,

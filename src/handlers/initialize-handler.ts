@@ -2,12 +2,13 @@
  * Initialize event handlers for Uniswap v4 pools
  */
 
-import { indexer, BigDecimal } from "envio";
+import { indexer, BigDecimal, type Pool } from "envio";
 import { getChainConfig } from "../utils/chains";
 import { sqrtPriceX96ToTokenPrices } from "../utils/pricing";
 import { getTokenMetadata } from "../utils/tokenMetadata";
 import { findNativePerToken } from "../utils/pricing";
 import { sanitizeBD } from "../utils";
+import { updatePoolDayData, updatePoolHourData } from "../utils/intervalUpdates";
 
 indexer.onEvent({ contract: "PoolManager", event: "Initialize" }, async ({ event, context }) => {
   // Get chain config for whitelist tokens and pools to skip
@@ -224,7 +225,7 @@ indexer.onEvent({ contract: "PoolManager", event: "Initialize" }, async ({ event
   const poolName = `${token0.symbol} / ${token1.symbol} - ${feeBps}%`;
 
   // Create new pool with prices
-  context.Pool.set({
+  const pool: Pool = {
     id: `${event.chainId}_${event.params.id}`,
     chainId: BigInt(event.chainId),
     name: poolName,
@@ -257,7 +258,16 @@ indexer.onEvent({ contract: "PoolManager", event: "Initialize" }, async ({ event
     totalValueLockedUSDUntracked: new BigDecimal(0),
     liquidityProviderCount: 0n,
     hooks: event.params.hooks,
-  });
+  };
+  context.Pool.set(pool);
+
+  // Seed the interval buckets at pool creation, as the upstream subgraph does,
+  // so a pool that is initialised and then sits idle still reports its opening
+  // price for that hour/day. A pool is initialised exactly once, so there is
+  // never an existing bucket to merge into and nothing has to be read here.
+  context.PoolHourData.set(updatePoolHourData(pool, undefined, event.block.timestamp));
+  context.PoolDayData.set(updatePoolDayData(pool, undefined, event.block.timestamp));
+
   context.PoolManager.set(poolManager);
   context.Token.set(token0);
   context.Token.set(token1);
