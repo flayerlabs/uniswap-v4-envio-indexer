@@ -1,8 +1,10 @@
+import { apechainDeployment } from "./apechain-deployment.js";
 import { BigDecimal, type EvmChainId } from "envio";
 
 // Chain IDs
 export enum ChainId {
   MAINNET = 1,
+  APECHAIN = 33139,
   ARBITRUM_ONE = 42161,
   OPTIMISM = 10,
   BASE = 8453,
@@ -61,6 +63,18 @@ export interface StaticTokenDefinition {
 export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } & {
   [chainId: number]: ChainConfig;
 } = {
+  ...(apechainDeployment ? { [ChainId.APECHAIN]: {
+    poolManagerAddress: apechainDeployment.poolManager.toLowerCase(),
+    stablecoinWrappedNativePoolId: "",
+    stablecoinIsToken0: false,
+    wrappedNativeAddress: "0x48b62137edfa95a428d35c09e44256a739f6b557",
+    minimumNativeLocked: new BigDecimal("1"),
+    stablecoinAddresses: [],
+    whitelistTokens: ["0x48b62137edfa95a428d35c09e44256a739f6b557"],
+    tokenOverrides: [{ address: "0x48b62137edfa95a428d35c09e44256a739f6b557", symbol: "WAPE", name: "Wrapped ApeCoin", decimals: BigInt(18) }],
+    poolsToSkip: [],
+    nativeTokenDetails: { symbol: "APE", name: "ApeCoin", decimals: BigInt(18) },
+  } } : {}) as Record<number, ChainConfig>,
   [ChainId.MAINNET]: {
     poolManagerAddress: "0x000000000004444c5dc75cb358380d2e3de08a90",
     stablecoinWrappedNativePoolId:
