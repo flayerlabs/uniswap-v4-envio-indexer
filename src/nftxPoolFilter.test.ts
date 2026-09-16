@@ -85,12 +85,13 @@ describe("the generated allowlist", () => {
 
   it("merges ENVIO_NFTX_EXTRA_POOL_IDS so a fresh launch can be indexed without a regen", () => {
     const extra = `0x${"ab".repeat(32)}`;
-    process.env.ENVIO_NFTX_EXTRA_POOL_IDS = `1:${extra};5042:${extra}`;
+    // Arbitrum One is configured but has not launched, so nothing is generated for it.
+    process.env.ENVIO_NFTX_EXTRA_POOL_IDS = `1:${extra};42161:${extra}`;
     try {
       expect(nftxPoolIds(1)).toContain(extra);
       expect(nftxPoolIds(1).length).toBe(NFTX_POOL_IDS[1]!.length + 1);
       // A chain with nothing generated still picks the override up.
-      expect(nftxPoolIds(5042)).toEqual([extra]);
+      expect(nftxPoolIds(42161)).toEqual([extra]);
       // ...and an untouched chain is unaffected.
       expect(nftxPoolIds(4663)).toEqual(NFTX_POOL_IDS[4663]);
     } finally {
@@ -110,9 +111,14 @@ describe("the generated allowlist", () => {
   it("covers the chains that have launched and nothing else", () => {
     expect(nftxPoolIds(1).length).toBeGreaterThan(0);
     expect(nftxPoolIds(11155111).length).toBeGreaterThan(0);
+    // Arc launched its first collection (AKARII) on 2026-09-16.
+    expect(nftxPoolIds(5042)).toEqual([
+      "0x2223a6d1152a94ab8a0977eaa2d41f3979f08803a1749cc95d1680d3c1c5ed0f",
+    ]);
     // A chain with no launches must return empty, which the handlers turn into
     // "skip this event entirely" rather than "match everything".
-    expect(nftxPoolIds(5042)).toEqual([]);
+    expect(nftxPoolIds(42161)).toEqual([]);
+    expect(nftxPoolIds(57073)).toEqual([]);
     expect(nftxPoolIds(999999)).toEqual([]);
   });
 });
