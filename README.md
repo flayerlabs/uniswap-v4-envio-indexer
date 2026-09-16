@@ -135,6 +135,36 @@ Upstream is [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4
 - [Discord community](https://discord.com/invite/envio)
 - [Envio Docs](https://docs.envio.dev)
 
+## Pools come from our own events
+
+The `Pool` rows in this indexer are created by **NFTX's** events, not Uniswap's
+`Initialize`:
+
+| Event | Contract | Creates |
+| --- | --- | --- |
+| `CollectionInitialized` | `Locker` | canonical pools |
+| `FlexPoolInitialized` | `NFTXFlexHook` | flex pools |
+
+Both are one address per chain, so they cost nothing to index. Uniswap's
+`Initialize` is emitted by the PoolManager singleton, so indexing it meant
+creating a `Pool` row and two `Token` rows — each token costing an RPC round trip
+for its metadata — for **every v4 pool on every chain**. That had reached ~472k
+`Pool` rows and ~255k `Token` rows to serve two dozen NFTX pools, and Arc alone
+opens ~109k pools a day.
+
+Two things the Uniswap event gave us for free have to be recovered:
+
+* **The pool id.** `CollectionInitialized` carries the abi-encoded `PoolKey`, and
+  the id is the keccak of exactly those bytes. (`FlexPoolInitialized` carries the
+  id outright.) Verified against all 23 canonical pools on the live indexer.
+* **The opening tick.** Our events carry only `sqrtPriceX96`, so the tick is
+  recovered by binary-searching `TickMath.getSqrtRatioAtTick` — the definition of
+  `getTickAtSqrtRatio` applied literally, rather than a ported approximation.
+
+A side effect worth knowing: a newly launched collection now gets its `Pool` row
+and token metadata immediately, without regenerating the allowlist. Only its
+swap volume waits for the next refresh.
+
 ## The NFTX pool allowlist
 
 The Uniswap `PoolManager` is a singleton: its `Swap` and `ModifyLiquidity` events

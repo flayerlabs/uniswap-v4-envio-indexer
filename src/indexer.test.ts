@@ -7,49 +7,35 @@
  *
  * Blocks are drawn from Ethereum mainnet at or after this chain's configured
  * start_block (25638238) — the test harness rejects an earlier range outright.
+ *
+ * Every fixture here uses a real NFTX pool, because that is all the indexer sees:
+ * pools come from our own Locker / flex-hook events, and Swap / ModifyLiquidity
+ * are filtered to the pool allowlist. Foreign pools in the same blocks are
+ * dropped before a handler runs, which is the point of the design.
  */
 
-import { afterAll, beforeAll, describe, it } from "vitest";
+import { describe, it } from "vitest";
 import { createTestIndexer, BigDecimal } from "envio";
-
-/**
- * These fixtures replay real mainnet blocks, and the pools they touch are other
- * people's — the handlers only see pools on the NFTX allowlist (see
- * src/utils/nftxPools.ts). Rather than swap the fixtures for the handful of
- * sparse NFTX swaps, admit the fixture pools through the same override an
- * operator would use for a fresh launch, so these keep exercising the handlers
- * on dense, real traffic.
- */
-const FIXTURE_POOLS = [
-  // ModifyLiquidity at block 25638247
-  "0x19d044e9f31155f162928a04f261ea2af6f811130bbc850398cfaed377d7fdb9",
-  "0xc516dba7bd70aa2dcb986bb1c27208ea29ecd097fa0ce636611e88e54ae4444d",
-  // Initialised at 25638359, then swapped through 25638367
-  "0xeb1d89a18177dfaa4f333e563495a39478f0e52fd22224d716a1de20684fdd1f",
-];
-
-beforeAll(() => {
-  process.env.ENVIO_NFTX_EXTRA_POOL_IDS = `1:${FIXTURE_POOLS.join(",")}`;
-});
-
-afterAll(() => {
-  delete process.env.ENVIO_NFTX_EXTRA_POOL_IDS;
-});
 
 const abs = (v: BigDecimal) =>
   v.lt(new BigDecimal("0")) ? v.times(new BigDecimal("-1")) : v;
 
 describe("Uniswap V4 Indexer", () => {
-  it("Does not create Ticks for ModifyLiquidity on unknown pools", async (t) => {
+  it("Does not create Ticks for ModifyLiquidity on a pool it has not seen created", async (t) => {
     const indexer = createTestIndexer();
 
+    // Block 25703423 carries four ModifyLiquidity events. Three are on other
+    // people's pools and never reach a handler; the fourth is NFTX pool
+    // 0x0e660964…, whose CollectionInitialized landed ~12k blocks earlier and so
+    // is outside this range. The handler must cope with the Pool row being
+    // absent — that is what makes a late start_block safe — and write no Ticks.
     t.expect(
       await indexer.process({
         chains: {
-          1: { startBlock: 25638247, endBlock: 25638247 },
+          1: { startBlock: 25703423, endBlock: 25703423 },
         },
       }),
-      "ModifyLiquidity events whose pool is unknown (no prior Initialize within the indexed range) should be processed without writing Tick entities. This is what makes the late start_block safe. The block also contains a PositionManager mint, captured as Position + Transfer. eventsProcessed is 6 rather than the block's 9 because the pool allowlist drops three swaps on pools that are not ours."
+      "an allowlisted pool with no prior creation event yields no Tick entities, and the three foreign pools in the same block are filtered out entirely"
     ).toMatchInlineSnapshot(`
       {
         "changes": [
@@ -58,11 +44,27 @@ describe("Uniswap V4 Indexer", () => {
               "sets": [
                 {
                   "chainId": 1n,
-                  "createdAtTimestamp": 1785325175n,
-                  "id": "1_354271",
-                  "origin": "0x0984ce9151a72b1711d768D90D7700f68059776f",
-                  "owner": "0xf5b3e21B4C596c84222d98e849aE5f55768d4A36",
-                  "tokenId": 354271n,
+                  "createdAtTimestamp": 1786109711n,
+                  "id": "1_365990",
+                  "origin": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
+                  "owner": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
+                  "tokenId": 365990n,
+                },
+                {
+                  "chainId": 1n,
+                  "createdAtTimestamp": 1786109711n,
+                  "id": "1_365991",
+                  "origin": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
+                  "owner": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
+                  "tokenId": 365991n,
+                },
+                {
+                  "chainId": 1n,
+                  "createdAtTimestamp": 1786109711n,
+                  "id": "1_365992",
+                  "origin": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
+                  "owner": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
+                  "tokenId": 365992n,
                 },
               ],
             },
@@ -71,20 +73,44 @@ describe("Uniswap V4 Indexer", () => {
                 {
                   "chainId": 1n,
                   "from": "0x0000000000000000000000000000000000000000",
-                  "id": "1_25638247_48",
-                  "logIndex": 48n,
-                  "origin": "0x0984ce9151a72b1711d768D90D7700f68059776f",
-                  "position_id": "1_354271",
-                  "timestamp": 1785325175n,
-                  "to": "0xf5b3e21B4C596c84222d98e849aE5f55768d4A36",
-                  "tokenId": 354271n,
-                  "transaction": "0x192d23b817d6bf299fcfb3416b8d34208a3f6d5ba95b30e82ad2a17ab270b326",
+                  "id": "1_25703423_559",
+                  "logIndex": 559n,
+                  "origin": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
+                  "position_id": "1_365990",
+                  "timestamp": 1786109711n,
+                  "to": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
+                  "tokenId": 365990n,
+                  "transaction": "0x353b331f6f226717156382ea95c69ffbca39e40937e6c74752c13ea2030a76de",
+                },
+                {
+                  "chainId": 1n,
+                  "from": "0x0000000000000000000000000000000000000000",
+                  "id": "1_25703423_842",
+                  "logIndex": 842n,
+                  "origin": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
+                  "position_id": "1_365991",
+                  "timestamp": 1786109711n,
+                  "to": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
+                  "tokenId": 365991n,
+                  "transaction": "0x0aeca8c5851495d1aa14dc2a6e6c00f9831105e383fd0511f4dc55bd9b5ab13c",
+                },
+                {
+                  "chainId": 1n,
+                  "from": "0x0000000000000000000000000000000000000000",
+                  "id": "1_25703423_983",
+                  "logIndex": 983n,
+                  "origin": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
+                  "position_id": "1_365992",
+                  "timestamp": 1786109711n,
+                  "to": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
+                  "tokenId": 365992n,
+                  "transaction": "0xb1b929f366e8e9be9823efebfbef09804fff9770399f3491f1aeaa6b16550bc5",
                 },
               ],
             },
-            "block": 25638247,
+            "block": 25703423,
             "chainId": 1,
-            "eventsProcessed": 6,
+            "eventsProcessed": 4,
           },
         ],
       }
@@ -94,11 +120,13 @@ describe("Uniswap V4 Indexer", () => {
   it("Accumulates swap volume and OHLC into the hour and day buckets", async (t) => {
     const indexer = createTestIndexer();
 
-    // 25638359 initialises a pool and swaps on it; 25638365-67 carry five more
-    // swaps on the same pool, all inside one hour — so the buckets have to
-    // accumulate rather than reset, and hour and day must agree.
+    // 25691611 is where Locker.CollectionInitialized opens NFTX pool
+    // 0x0e660964…; the next ~90 blocks carry 90 swaps on it, all inside one hour
+    // bucket. So the buckets have to accumulate rather than reset, hour and day
+    // must agree, and the pool has to have been created from our own event
+    // rather than Uniswap's Initialize.
     const result: any = await indexer.process({
-      chains: { 1: { startBlock: 25638359, endBlock: 25638367 } },
+      chains: { 1: { startBlock: 25691611, endBlock: 25691700 } },
     });
 
     const collect = (entity: string) =>

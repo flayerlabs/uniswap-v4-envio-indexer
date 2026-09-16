@@ -2,6 +2,12 @@
 # touch: trigger Envio deployment (2026-08-28 #1)
 name: uniswap-v4-indexer
 contracts:
+  # Pools are created from our OWN events (see the NFTXLocker / NFTXFlexHook
+  # entries below), not from Uniswap's chain-wide `Initialize`. Indexing that
+  # meant a Pool row and two RPC-fetched Token rows for every v4 pool on every
+  # chain — ~472k and ~255k rows respectively, to serve two dozen NFTX pools,
+  # with Arc alone opening ~109k pools a day.
+  #
   # Only events with handlers are listed. The PoolManager is a singleton that
   # every v4 pool on the chain emits through, so each event here costs the whole
   # chain's traffic, not NFTX's share of it — measured on mainnet, NFTX pools are
@@ -11,7 +17,6 @@ contracts:
   # writing its handler; nothing else here reads them.
   - name: PoolManager
     events:
-      - event: Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)
       - event: ModifyLiquidity(bytes32 indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)
         field_selection: # Additional fields available to index to augment data
           transaction_fields:
@@ -22,6 +27,17 @@ contracts:
           transaction_fields:
             - "hash"
             - "from"
+  # NFTX's own contracts. One address per chain, so these cost nothing to index
+  # and they are the only source of Pool rows.
+  - name: NFTXLocker
+    events:
+      # Canonical pools. `_poolKey` is the abi-encoded PoolKey; its keccak is the pool id.
+      - event: CollectionInitialized(address indexed _collection, bytes _poolKey, uint256[] _tokenIds, uint256 _sqrtPriceX96, address _sender)
+  - name: NFTXFlexHook
+    events:
+      # Flex pools: a collection token paired with a whitelisted token rather than
+      # the chain's quote token, under a different hook. Carries the id and key.
+      - event: FlexPoolInitialized(bytes32 indexed _poolId, address indexed _collectionToken, address indexed _pairToken, (address,address,uint24,int24,address) _key, uint160 _sqrtPriceX96)
   - name: PositionManager
     events:
       - event: Subscription(uint256 indexed tokenId, address indexed subscriber)
@@ -59,6 +75,15 @@ chains:
   - id: 1
     start_block: 25638238
     contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
+      # The flex hook is mainnet-only today; its own deployment block, well after
+      # the chain start_block above.
+      - name: NFTXFlexHook
+        start_block: 25933487
+        address:
+          - 0xC26A5Cb51b1818F62a4C6693a9a1feDB3340efc4
       - name: PositionManager
         address:
           - 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e
@@ -71,6 +96,9 @@ chains:
   - id: 11155111
     start_block: 11465794
     contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
       - name: PositionManager
         address:
           - 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4
@@ -83,6 +111,9 @@ chains:
   - id: 4663
     start_block: 35354494
     contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
       - name: PositionManager
         address:
           - 0x58daec3116aae6d93017baaea7749052e8a04fa7
@@ -95,6 +126,9 @@ chains:
   - id: 57073
     start_block: 54328901
     contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
       - name: PositionManager
         address:
           - 0x1b35d13a2e2528f192637f14b05f0dc0e7deb566
@@ -125,6 +159,9 @@ chains:
       - url: ${ENVIO_RPC_URL_5042:-https://rpc.mainnet.arc.io}
         for: sync
     contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
       - name: PositionManager
         address:
           - 0x6049c9a0e26405c0985f9e3685c87d0ae917f82b
@@ -136,6 +173,9 @@ chains:
   - id: 42161
     start_block: 498892278
     contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
       - name: PositionManager
         address:
           - 0xd88f38f930b7952f2db2432cb002e7abbf3dd869
