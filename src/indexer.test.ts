@@ -9,8 +9,32 @@
  * start_block (25638238) — the test harness rejects an earlier range outright.
  */
 
-import { describe, it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import { createTestIndexer, BigDecimal } from "envio";
+
+/**
+ * These fixtures replay real mainnet blocks, and the pools they touch are other
+ * people's — the handlers only see pools on the NFTX allowlist (see
+ * src/utils/nftxPools.ts). Rather than swap the fixtures for the handful of
+ * sparse NFTX swaps, admit the fixture pools through the same override an
+ * operator would use for a fresh launch, so these keep exercising the handlers
+ * on dense, real traffic.
+ */
+const FIXTURE_POOLS = [
+  // ModifyLiquidity at block 25638247
+  "0x19d044e9f31155f162928a04f261ea2af6f811130bbc850398cfaed377d7fdb9",
+  "0xc516dba7bd70aa2dcb986bb1c27208ea29ecd097fa0ce636611e88e54ae4444d",
+  // Initialised at 25638359, then swapped through 25638367
+  "0xeb1d89a18177dfaa4f333e563495a39478f0e52fd22224d716a1de20684fdd1f",
+];
+
+beforeAll(() => {
+  process.env.ENVIO_NFTX_EXTRA_POOL_IDS = `1:${FIXTURE_POOLS.join(",")}`;
+});
+
+afterAll(() => {
+  delete process.env.ENVIO_NFTX_EXTRA_POOL_IDS;
+});
 
 const abs = (v: BigDecimal) =>
   v.lt(new BigDecimal("0")) ? v.times(new BigDecimal("-1")) : v;
@@ -25,7 +49,7 @@ describe("Uniswap V4 Indexer", () => {
           1: { startBlock: 25638247, endBlock: 25638247 },
         },
       }),
-      "ModifyLiquidity events whose pool is unknown (no prior Initialize within the indexed range) should be processed without writing Tick entities. This is what makes the late start_block safe. The block also contains a PositionManager mint, captured as Position + Transfer."
+      "ModifyLiquidity events whose pool is unknown (no prior Initialize within the indexed range) should be processed without writing Tick entities. This is what makes the late start_block safe. The block also contains a PositionManager mint, captured as Position + Transfer. eventsProcessed is 6 rather than the block's 9 because the pool allowlist drops three swaps on pools that are not ours."
     ).toMatchInlineSnapshot(`
       {
         "changes": [
@@ -60,7 +84,7 @@ describe("Uniswap V4 Indexer", () => {
             },
             "block": 25638247,
             "chainId": 1,
-            "eventsProcessed": 9,
+            "eventsProcessed": 6,
           },
         ],
       }

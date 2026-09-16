@@ -134,3 +134,50 @@ Upstream is [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4
 
 - [Discord community](https://discord.com/invite/envio)
 - [Envio Docs](https://docs.envio.dev)
+
+## The NFTX pool allowlist
+
+The Uniswap `PoolManager` is a singleton: its `Swap` and `ModifyLiquidity` events
+carry every v4 pool on the chain, not just ours. Measured against live data, NFTX
+pools are **0.007%** of mainnet swaps and **0.003%** of Robinhood's, and those two
+events are ~99.8% of everything this indexer would otherwise ingest.
+
+Both handlers therefore filter on an allowlist of NFTX pool ids. `id` is an
+indexed topic, so the list is pushed down into the HyperSync/RPC query — the rest
+is never delivered to the indexer and never counted against the event-processing
+quota.
+
+### Refreshing it after a launch
+
+```sh
+pnpm generate:pool-ids   # rewrites src/utils/nftxPoolIds.ts
+```
+
+The generator reads the NFTX indexer, which records each pool's key straight off
+`Locker.CollectionInitialized`, then **re-derives every id from its recorded
+components** and refuses to write if one disagrees. That check is there because
+the derivation has two traps: Uniswap v4 sorts the pair by address, so the
+collection token lands on `currency0` about half the time (12 of our 24 pools as
+of writing), and the hook is part of the key — canonical pools use `NFTXV4Hook`,
+flex pools use `NFTXFlexHook` with a whitelisted pair token instead of the chain's
+quote token. Taking the ids from the indexer rather than assuming a shape is what
+makes both cases fall out for free.
+
+Commit the regenerated file and redeploy.
+
+### Being late is not the same as losing data
+
+A redeploy re-indexes from each chain's `start_block` *through this filter*, so a
+pool added to the list later is backfilled from its own `Initialize`. A stale list
+delays a collection's AMM volume; it does not drop it.
+
+To index a pool before the next regeneration — a launch that just happened, say —
+set the override on the deployment, no code change needed:
+
+```sh
+ENVIO_NFTX_EXTRA_POOL_IDS="1:0xabc…,0xdef…;11155111:0x123…"
+```
+
+A chain with no entries at all (deployed but nothing launched — Ink, Arbitrum One
+and Arc today) skips `Swap` and `ModifyLiquidity` outright.
+

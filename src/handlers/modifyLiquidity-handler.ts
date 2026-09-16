@@ -9,13 +9,25 @@ import {
 import { convertTokenToDecimal, sanitizeBD } from "../utils";
 import { createInitialTick } from "../utils/tick";
 import { getChainConfig } from "../utils/chains";
+import { nftxPoolIds } from "../utils/nftxPools";
 import {
   loadPoolIntervals,
   updatePoolDayData,
   updatePoolHourData,
 } from "../utils/intervalUpdates";
 
-indexer.onEvent({ contract: "PoolManager", event: "ModifyLiquidity" }, async ({ event, context }) => {
+// Filtered to NFTX pools for the same reason as the Swap handler: the event is
+// chain-wide, `id` is indexed, and everything else is somebody else's position.
+indexer.onEvent(
+  {
+    contract: "PoolManager",
+    event: "ModifyLiquidity",
+    where: ({ chain }) => {
+      const ids = nftxPoolIds(chain.id);
+      return ids.length ? { params: [{ id: ids }] } : false;
+    },
+  },
+  async ({ event, context }) => {
   // Get chain config for pools to skip
   const chainConfig = getChainConfig(event.chainId);
 

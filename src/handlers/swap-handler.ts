@@ -3,6 +3,7 @@
  */
 import { indexer, BigDecimal, type Swap } from "envio";
 import { getChainConfig } from "../utils/chains";
+import { nftxPoolIds } from "../utils/nftxPools";
 import { convertTokenToDecimal } from "../utils";
 import { getTrackedAmountUSD, getNativePriceInUSD } from "../utils/pricing";
 import { safeDiv, sanitizeBD } from "../utils/index";
@@ -14,7 +15,21 @@ import {
   updatePoolHourData,
 } from "../utils/intervalUpdates";
 
-indexer.onEvent({ contract: "PoolManager", event: "Swap" }, async ({ event, context }) => {
+// The PoolManager is a singleton, so this event carries every v4 swap on the
+// chain — measured, NFTX pools are 0.007% of them on mainnet and 0.003% on
+// Robinhood. `id` is an indexed topic, so the allowlist is pushed down into the
+// HyperSync/RPC query and the rest is never delivered, let alone processed.
+// A chain with no NFTX pools skips the event entirely.
+indexer.onEvent(
+  {
+    contract: "PoolManager",
+    event: "Swap",
+    where: ({ chain }) => {
+      const ids = nftxPoolIds(chain.id);
+      return ids.length ? { params: [{ id: ids }] } : false;
+    },
+  },
+  async ({ event, context }) => {
   const chainConfig = getChainConfig(event.chainId);
 
   let [poolManager, pool, bundle, ethPriceUSD] = await Promise.all([
