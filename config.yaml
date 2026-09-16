@@ -40,7 +40,7 @@ contracts:
             - "hash"
             - "from"
 # This fork exists to serve NFTX's Uniswap v4 pool data, so it indexes exactly the
-# five chains NFTX v4 is deployed on. Every chain's `start_block` is the NFTX
+# six chains NFTX v4 is deployed on. Every chain's `start_block` is the NFTX
 # protocol deployment on that chain — not the PoolManager deployment and not
 # genesis — because only pools that NFTX initialises matter here, and all of them
 # are created after the protocol lands. The blocks are copied verbatim from the
@@ -101,6 +101,36 @@ chains:
       - name: PoolManager
         address:
           - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
+  # Arc (5042) — Circle's USDC-native L1. Uniswap's own deployment predates NFTX
+  # here too; the NFTX core landed across 21129174-21129248.
+  #
+  # Two things differ from every other chain in this file:
+  #
+  #  1. HyperSync does NOT serve Arc mainnet (it serves arc-testnet 5042002
+  #     only), so this chain syncs over plain RPC. ENVIO_RPC_URL_5042 must point
+  #     at an endpoint that can take it: Arc produces a block every ~0.5s
+  #     (~170k/day) and the public node will rate-limit under sustained sync.
+  #  2. The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
+  #     0x3600…0000), not an 18-decimal ETH wrapper, so this chain's
+  #     `derivedETH` and every *Token0/1 amount is denominated in USDC. The
+  #     NFTX indexer carries the matching 1e12 lift for its own ETH-wei fields
+  #     (Flayer/Subgraph src/lib/currency.ts NATIVE_SCALE); nothing here needs
+  #     it, because these are raw token amounts and Token.decimals already says
+  #     6. `Bundle.ethPriceUSD` stays 0 as on every other chain (see above) —
+  #     which on Arc happens to be the one chain where it could have been
+  #     derived for free, since native IS the stablecoin.
+  - id: 5042
+    start_block: 21129174
+    rpc:
+      - url: ${ENVIO_RPC_URL_5042:-https://rpc.mainnet.arc.io}
+        for: sync
+    contracts:
+      - name: PositionManager
+        address:
+          - 0x6049c9a0e26405c0985f9e3685c87d0ae917f82b
+      - name: PoolManager
+        address:
+          - 0x8366a39cc670b4001a1121b8f6a443a643e40951
   # Arbitrum One — Nitro, native currency ETH. Deployment spans
   # 498892378-498892454; PoolManager landed at 297842872, ~200M blocks earlier.
   - id: 42161
