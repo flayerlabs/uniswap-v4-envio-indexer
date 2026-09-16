@@ -2,11 +2,10 @@
 # touch: trigger Envio deployment (2026-08-28 #1)
 name: uniswap-v4-indexer
 contracts:
-  # Pools are created from our OWN events (see the NFTXLocker / NFTXFlexHook
-  # entries below), not from Uniswap's chain-wide `Initialize`. Indexing that
-  # meant a Pool row and two RPC-fetched Token rows for every v4 pool on every
-  # chain — ~472k and ~255k rows respectively, to serve two dozen NFTX pools,
-  # with Arc alone opening ~109k pools a day.
+  # Initialize is filtered to NFTX pool ids, just like Swap/ModifyLiquidity.
+  # It runs BEFORE initial liquidity is deposited; Locker.CollectionInitialized
+  # runs afterwards and is too late to start reserve accounting. Filtering avoids
+  # creating Pool/Token rows or fetching metadata for unrelated Uniswap pools.
   #
   # Only events with handlers are listed. The PoolManager is a singleton that
   # every v4 pool on the chain emits through, so each event here costs the whole
@@ -17,6 +16,7 @@ contracts:
   # writing its handler; nothing else here reads them.
   - name: PoolManager
     events:
+      - event: Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)
       - event: ModifyLiquidity(bytes32 indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)
         field_selection: # Additional fields available to index to augment data
           transaction_fields:
@@ -27,8 +27,9 @@ contracts:
           transaction_fields:
             - "hash"
             - "from"
-  # NFTX's own contracts. One address per chain, so these cost nothing to index
-  # and they are the only source of Pool rows.
+  # NFTX's own events also discover newly launched pools before their ids are
+  # allowlisted. For allowlisted pools these are idempotent acknowledgements:
+  # they must never reset reserves that Initialize/ModifyLiquidity already set.
   - name: NFTXLocker
     events:
       # Canonical pools. `_poolKey` is the abi-encoded PoolKey; its keccak is the pool id.
