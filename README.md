@@ -135,44 +135,51 @@ Upstream is [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4
 - [Discord community](https://discord.com/invite/envio)
 - [Envio Docs](https://docs.envio.dev)
 
-## Pools come from our own events
+## Pool creation and initial reserves
 
-The `Pool` rows in this indexer are created by **NFTX's** events, not Uniswap's
-`Initialize`:
+For allowlisted NFTX pools, `PoolManager.Initialize` creates the pool before its
+first `ModifyLiquidity` event. This ordering is required to record the initial
+deposit. The Initialize filter uses the same pool ids as Swap and ModifyLiquidity,
+so unrelated Uniswap pools do not trigger entity creation or metadata RPC calls.
 
-| Event | Contract | Creates |
-| --- | --- | --- |
-| `CollectionInitialized` | `Locker` | canonical pools |
-| `FlexPoolInitialized` | `NFTXFlexHook` | flex pools |
+NFTX's own `Locker.CollectionInitialized` and `NFTXFlexHook.FlexPoolInitialized`
+events still discover new pools. Creation is idempotent: these later events must
+not reset an existing pool, its reserves, counters, or opening interval buckets.
+Canonical pool ids are derived from the emitted abi-encoded PoolKey; flex events
+provide the id directly. The opening tick is recovered from `sqrtPriceX96`.
 
-Both are one address per chain, so they cost nothing to index. Uniswap's
-`Initialize` is emitted by the PoolManager singleton, so indexing it meant
-creating a `Pool` row and two `Token` rows — each token costing an RPC round trip
-for its metadata — for **every v4 pool on every chain**. That had reached ~472k
-`Pool` rows and ~255k `Token` rows to serve two dozen NFTX pools, and Arc alone
-opens ~109k pools a day.
+A new pool outside the allowlist gets metadata through NFTX's events, but its
+liquidity and swap accounting are incomplete until the allowlist is refreshed and
+history is replayed. Do not treat its zero balances as verified reserves.
 
-Two things the Uniswap event gave us for free have to be recovered:
+### Why the historical replay is necessary
 
-* **The pool id.** `CollectionInitialized` carries the abi-encoded `PoolKey`, and
-  the id is the keccak of exactly those bytes. (`FlexPoolInitialized` carries the
-  id outright.) Verified against all 23 canonical pools on the live indexer.
-* **The opening tick.** Our events carry only `sqrtPriceX96`, so the tick is
-  recovered by binary-searching `TickMath.getSqrtRatioAtTick` — the definition of
-  `getTickAtSqrtRatio` applied literally, rather than a ported approximation.
+On Ethereum, transaction
+`0x8acd2da088f3e9ec12378943fd086d246eb1fc4d76180047ba3d019400c403f0`
+in block 25653470 emitted Initialize at log 355, the seed ModifyLiquidity at log
+363, and CollectionInitialized at log 373. Creating the pool only at the final
+event lost the initial 16.1574 flETH and 42 collection tokens. Subsequent swaps
+then accumulated from zero, producing negative indexed balances despite a funded
+on-chain pool.
 
-A side effect worth knowing: a newly launched collection now gets its `Pool` row
-and token metadata immediately, without regenerating the allowlist. Only its
-swap volume waits for the next refresh.
+`src/reserves.test.ts` replays that transaction and the first swap. It verifies
+both opening reserves, the liquidity record, and that later NFTX events do not
+reset balances or duplicate the pool count.
+
+Deploy this fix into a fresh database and replay from every configured start
+block. Restarting the old database at the chain head cannot recover omitted
+deposits. Before switching consumers, wait for synchronization, verify the seed
+liquidity record and current reserves, and query all pools for negative balances.
+Keep the API's invalid-reserve protection even after the replay.
 
 ## The NFTX pool allowlist
 
-The Uniswap `PoolManager` is a singleton: its `Swap` and `ModifyLiquidity` events
+The Uniswap `PoolManager` is a singleton: its `Initialize`, `Swap` and `ModifyLiquidity` events
 carry every v4 pool on the chain, not just ours. Measured against live data, NFTX
 pools are **0.007%** of mainnet swaps and **0.003%** of Robinhood's, and those two
 events are ~99.8% of everything this indexer would otherwise ingest.
 
-Both handlers therefore filter on an allowlist of NFTX pool ids. `id` is an
+All three handlers therefore filter on an allowlist of NFTX pool ids. `id` is an
 indexed topic, so the list is pushed down into the HyperSync/RPC query — the rest
 is never delivered to the indexer and never counted against the event-processing
 quota.
@@ -199,7 +206,7 @@ Commit the regenerated file and redeploy.
 
 A redeploy re-indexes from each chain's `start_block` *through this filter*, so a
 pool added to the list later is backfilled from its own `Initialize`. A stale list
-delays a collection's AMM volume; it does not drop it.
+delays complete liquidity and volume accounting; replay recovers those events.
 
 To index a pool before the next regeneration — a launch that just happened, say —
 set the override on the deployment, no code change needed:
@@ -209,5 +216,5 @@ ENVIO_NFTX_EXTRA_POOL_IDS="1:0xabc…,0xdef…;11155111:0x123…"
 ```
 
 A chain with no entries at all (deployed but nothing launched — Ink, Arbitrum One
-and Arc today) skips `Swap` and `ModifyLiquidity` outright.
+and Arc today) skips `Initialize`, `Swap` and `ModifyLiquidity` outright.
 

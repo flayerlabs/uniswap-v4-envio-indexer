@@ -1,5 +1,6 @@
 /*
- * The pool allowlist the Swap and ModifyLiquidity handlers filter on.
+ * The shared allowlist for Initialize, Swap and ModifyLiquidity. All three must
+ * see the same pool ids so deposits cannot be skipped before swaps are applied.
  *
  * The PoolManager is a singleton, so those events carry every v4 swap and every
  * LP move on the chain. Measured against live data, NFTX pools are 0.007% of

@@ -1,7 +1,7 @@
 /*
  * GENERATED FILE — do not edit by hand.
  *
- * The NFTX pool ids the Swap and ModifyLiquidity handlers filter on. Regenerate
+ * The NFTX pool ids the Initialize, Swap and ModifyLiquidity handlers filter on. Regenerate
  * with `pnpm generate:pool-ids` after a launch, then redeploy. Read it through
  * `nftxPoolIds()` in ./nftxPools, which also honours ENVIO_NFTX_EXTRA_POOL_IDS.
  *
@@ -9,7 +9,7 @@
  * Hooks seen: 0xaa49adadd33c5e953b645567afb10cbbba63afc4, 0xc26a5cb51b1818f62a4c6693a9a1fedb3340efc4
  *
  * A chain absent from this map (or present with an empty list) has no NFTX
- * pools, and its Swap / ModifyLiquidity events are skipped entirely.
+ * pools, and its Initialize / Swap / ModifyLiquidity events are skipped entirely.
  */
 export const NFTX_POOL_IDS: Record<number, readonly string[]> = {
   // 6 pools (5 canonical, 1 flex)

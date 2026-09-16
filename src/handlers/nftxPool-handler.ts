@@ -7,8 +7,9 @@
  * had grown to ~472k Pool rows and ~255k Token rows to serve NFTX's two dozen
  * pools, and Arc alone was opening ~109k pools a day.
  *
- * Our pools announce themselves on contracts we own, at one address per chain,
- * so we listen to those instead and never see anybody else's:
+ * Initialize is filtered to the same NFTX pool ids as Swap/ModifyLiquidity, so
+ * their Pool row exists before the initial deposit. NFTX's own later events
+ * discover new pools, but must not overwrite an already-funded pool:
  *
  *   - `Locker.CollectionInitialized` for canonical pools. It carries the
  *     abi-encoded PoolKey, so currencies, fee, tickSpacing and hooks all come
@@ -29,6 +30,7 @@ import { findNativePerToken } from "../utils/pricing";
 import { sanitizeBD } from "../utils";
 import { getTickAtSqrtPrice } from "../utils/tickFromSqrtPrice";
 import { updatePoolDayData, updatePoolHourData } from "../utils/intervalUpdates";
+import { nftxPoolIds } from "../utils/nftxPools";
 
 /** The five static words of an abi-encoded v4 PoolKey. */
 interface DecodedPoolKey {
@@ -91,6 +93,10 @@ const createNftxPool = async (
   key: DecodedPoolKey,
   sqrtPriceX96: bigint,
 ): Promise<void> => {
+  // CollectionInitialized follows the seed deposit in the same transaction.
+  // Returning before any writes also prevents duplicate token/manager counts
+  // and resetting the opening hour/day buckets.
+  if (await context.Pool.get(`${event.chainId}_${poolId}`)) return;
   const { currency0, currency1, fee, tickSpacing, hooks } = key;
   const chainConfig = getChainConfig(event.chainId);
   const poolManagerAddress = getAddress(chainConfig.poolManagerAddress);
@@ -355,6 +361,26 @@ const createNftxPool = async (
   context.Token.set(token0);
   context.Token.set(token1);
 };
+
+indexer.onEvent(
+  {
+    contract: "PoolManager",
+    event: "Initialize",
+    where: ({ chain }) => {
+      const ids = nftxPoolIds(chain.id);
+      return ids.length ? { params: [{ id: ids }] } : false;
+    },
+  },
+  async ({ event, context }) => {
+    await createNftxPool(context, event, event.params.id, {
+      currency0: getAddress(event.params.currency0),
+      currency1: getAddress(event.params.currency1),
+      fee: BigInt(event.params.fee),
+      tickSpacing: BigInt(event.params.tickSpacing),
+      hooks: getAddress(event.params.hooks),
+    }, event.params.sqrtPriceX96);
+  },
+);
 
 indexer.onEvent(
   { contract: "NFTXLocker", event: "CollectionInitialized" },

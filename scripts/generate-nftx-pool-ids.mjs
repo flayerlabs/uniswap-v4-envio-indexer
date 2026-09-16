@@ -1,6 +1,6 @@
 /*
  * Regenerates src/utils/nftxPoolIds.ts — the allowlist of NFTX pool ids the
- * Swap and ModifyLiquidity handlers filter on.
+ * Initialize, Swap and ModifyLiquidity handlers filter on.
  *
  *   pnpm generate:pool-ids
  *
@@ -99,7 +99,7 @@ writeFileSync(
   `/*
  * GENERATED FILE — do not edit by hand.
  *
- * The NFTX pool ids the Swap and ModifyLiquidity handlers filter on. Regenerate
+ * The NFTX pool ids the Initialize, Swap and ModifyLiquidity handlers filter on. Regenerate
  * with \`pnpm generate:pool-ids\` after a launch, then redeploy. Read it through
  * \`nftxPoolIds()\` in ./nftxPools, which also honours ENVIO_NFTX_EXTRA_POOL_IDS.
  *
@@ -107,7 +107,7 @@ writeFileSync(
  * Hooks seen: ${hooks.join(", ")}
  *
  * A chain absent from this map (or present with an empty list) has no NFTX
- * pools, and its Swap / ModifyLiquidity events are skipped entirely.
+ * pools, and its Initialize / Swap / ModifyLiquidity events are skipped entirely.
  */
 export const NFTX_POOL_IDS: Record<number, readonly string[]> = {
 ${body}

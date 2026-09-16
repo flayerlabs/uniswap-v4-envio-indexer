@@ -9,8 +9,8 @@
  * start_block (25638238) — the test harness rejects an earlier range outright.
  *
  * Every fixture here uses a real NFTX pool, because that is all the indexer sees:
- * pools come from our own Locker / flex-hook events, and Swap / ModifyLiquidity
- * are filtered to the pool allowlist. Foreign pools in the same blocks are
+ * Initialize / Swap / ModifyLiquidity are filtered to the pool allowlist,
+ * and Locker / flex-hook discovery is idempotent. Foreign pools in the same blocks are
  * dropped before a handler runs, which is the point of the design.
  */
 
@@ -123,8 +123,8 @@ describe("Uniswap V4 Indexer", () => {
     // 25691611 is where Locker.CollectionInitialized opens NFTX pool
     // 0x0e660964…; the next ~90 blocks carry 90 swaps on it, all inside one hour
     // bucket. So the buckets have to accumulate rather than reset, hour and day
-    // must agree, and the pool has to have been created from our own event
-    // rather than Uniswap's Initialize.
+    // must agree. The filtered Initialize creates the pool before its deposit;
+    // the later Locker event must not reset its opening bucket.
     const result: any = await indexer.process({
       chains: { 1: { startBlock: 25691611, endBlock: 25691700 } },
     });
