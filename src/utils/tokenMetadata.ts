@@ -48,7 +48,13 @@ const TokenMetadata = S.schema({
 });
 type TokenMetadata = S.Output<typeof TokenMetadata>;
 
-const getRpcUrl = (chainId: number): string => {
+/**
+ * RPC for the `getTokenMetadata` effect (name/symbol/decimals via viem). Every
+ * chain in config.yaml needs a case here: the first pool created on a chain
+ * without one throws from the handler and halts that chain's sync at the block
+ * before it (Arc, 2026-09-16). `rpcUrls.test.ts` pins config.yaml to this switch.
+ */
+export const getRpcUrl = (chainId: number): string => {
   switch (chainId) {
     case 1:
       return process.env.ENVIO_MAINNET_RPC_URL || "https://eth.drpc.org";
@@ -99,7 +105,14 @@ const getRpcUrl = (chainId: number): string => {
       return (
         process.env.ENVIO_BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org"
       );
-    // Add generic fallback for any chain
+    case 5042:
+      // Arc has no HyperSync, so config.yaml also syncs it over RPC from
+      // ENVIO_RPC_URL_5042; reuse that node here unless a dedicated one is set.
+      return (
+        process.env.ENVIO_ARC_RPC_URL ||
+        process.env.ENVIO_RPC_URL_5042 ||
+        "https://rpc.mainnet.arc.io"
+      );
     default:
       throw new Error(`No RPC URL configured for chainId ${chainId}`);
   }

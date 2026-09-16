@@ -95,8 +95,12 @@ ENVIO_ARBITRUM_RPC_URL=https://your-arbitrum-node
 ```
 
 These are used only by the `getTokenMetadata` effect (name/symbol/decimals via a
-viem multicall); indexing itself goes through HyperSync, which serves all five
-chains natively.
+viem multicall); indexing itself goes through HyperSync on every chain except Arc,
+which HyperSync does not serve and which `config.yaml` syncs over
+`ENVIO_RPC_URL_5042` instead. Every network in `config.yaml` must have a case in
+`getRpcUrl` (`src/utils/tokenMetadata.ts`) — without one, the first pool created
+on that chain throws from the handler and the chain's sync halts.
+`src/rpcUrls.test.ts` enforces this.
 
 ## Querying the Data
 
