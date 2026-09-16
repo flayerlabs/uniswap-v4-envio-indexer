@@ -4,6 +4,7 @@ import { BigDecimal, type EvmChainId } from "envio";
 export enum ChainId {
   MAINNET = 1,
   ARBITRUM_ONE = 42161,
+  ARC = 5042,
   OPTIMISM = 10,
   BASE = 8453,
   MATIC = 137,
@@ -61,6 +62,35 @@ export interface StaticTokenDefinition {
 export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } & {
   [chainId: number]: ChainConfig;
 } = {
+  // Arc — Circle's USDC-native L1. USDC is the native currency and the pools'
+  // quote side, through its 6-decimal ERC20 predeploy; there is no ETH wrapper
+  // on this chain and none is needed, so `wrappedNativeAddress` IS the
+  // stablecoin. `minimumNativeLocked` is therefore denominated in dollars
+  // rather than in ETH: 1000 USDC is the rough dollar equivalent of the 1 ETH
+  // the ETH-quoted chains use.
+  [ChainId.ARC]: {
+    poolManagerAddress: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    stablecoinWrappedNativePoolId: "", // native is the stablecoin; no anchor pool exists
+    stablecoinIsToken0: false,
+    wrappedNativeAddress: "0x3600000000000000000000000000000000000000",
+    minimumNativeLocked: new BigDecimal("1000"),
+    stablecoinAddresses: ["0x3600000000000000000000000000000000000000"],
+    whitelistTokens: ["0x3600000000000000000000000000000000000000"],
+    tokenOverrides: [
+      {
+        address: "0x3600000000000000000000000000000000000000",
+        symbol: "USDC",
+        name: "USD Coin",
+        decimals: BigInt(6),
+      },
+    ],
+    poolsToSkip: [],
+    nativeTokenDetails: {
+      symbol: "USDC",
+      name: "USD Coin",
+      decimals: BigInt(6),
+    },
+  },
   [ChainId.MAINNET]: {
     poolManagerAddress: "0x000000000004444c5dc75cb358380d2e3de08a90",
     stablecoinWrappedNativePoolId:
