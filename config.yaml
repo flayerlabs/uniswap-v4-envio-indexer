@@ -145,6 +145,14 @@ chains:
   #     only), so this chain syncs over plain RPC. ENVIO_RPC_URL_5042 must point
   #     at an endpoint that can take it: Arc produces a block every ~0.5s
   #     (~170k/day) and the public node will rate-limit under sustained sync.
+  #     Over RPC the `from` in transaction_fields costs one
+  #     eth_getTransactionByHash per Swap/ModifyLiquidity (free on HyperSync),
+  #     through a loader that retries every 5s without backoff — so a
+  #     compute-unit cap shows up as a stream of 429 "Top level promise
+  #     timeout" errors that slow the sync rather than break it. The paging
+  #     settings below keep the batches inside a metered provider's budget, and
+  #     the fallback (the metadata RPC, ENVIO_ARC_RPC_URL — a different
+  #     endpoint from the sync key) takes over when the primary stalls >20s.
   #  2. The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
   #     0x3600…0000), not an 18-decimal ETH wrapper, so this chain's
   #     `derivedETH` and every *Token0/1 amount is denominated in USDC. The
@@ -159,6 +167,14 @@ chains:
     rpc:
       - url: ${ENVIO_RPC_URL_5042:-https://rpc.mainnet.arc.io}
         for: sync
+        initial_block_interval: 1000
+        interval_ceiling: 2000
+        acceleration_additive: 500
+        backoff_multiplicative: 0.5
+        backoff_millis: 2000
+        query_timeout_millis: 20000
+      - url: ${ENVIO_ARC_RPC_URL:-https://rpc.mainnet.arc.io}
+        for: fallback
     contracts:
       - name: NFTXLocker
         address:

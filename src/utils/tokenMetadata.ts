@@ -121,6 +121,16 @@ export const getRpcUrl = (chainId: number): string => {
 // Cache of clients per chainId
 const clients: Record<number, PublicClient> = {};
 
+/**
+ * Retry policy for the metadata client. viem's defaults (3 retries at 150ms,
+ * doubling) give up after ~1s, which is nothing against a provider's
+ * compute-units-per-second cap — and an effect that throws halts the chain,
+ * because HyperIndex does not retry effects. Six retries from 1s, doubling,
+ * ride out ~63s of 429s before giving up (Alchemy suggests exponential backoff
+ * capped at 32-64s). viem already retries 429, 5xx and timeouts.
+ */
+export const METADATA_RPC_RETRY = { retryCount: 6, retryDelay: 1_000 } as const;
+
 // Get client for a specific chain
 const getClient = (chainId: number): PublicClient => {
   if (!clients[chainId]) {
@@ -132,6 +142,7 @@ const getClient = (chainId: number): PublicClient => {
         },
         transport: http(getRpcUrl(chainId), {
           batch: true,
+          ...METADATA_RPC_RETRY,
         }),
       });
       console.log(`Created client for chain ${chainId}`);
@@ -159,7 +170,10 @@ export const getTokenMetadata = createEffect(
       chainId: t.item(1, S.number as S.Schema<EvmChainId>),
     })),
     output: TokenMetadata,
-    rateLimit: false,
+    // A new token is rare (one per pool side), so this costs nothing in steady
+    // state; it only stops a burst of pool creations after a restart from
+    // stacking multicalls onto an RPC that is already throttling the sync.
+    rateLimit: { calls: 5, per: "second" },
     cache: true,
   },
   async ({ context, input: { address, chainId } }) => {

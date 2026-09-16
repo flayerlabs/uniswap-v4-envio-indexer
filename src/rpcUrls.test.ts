@@ -42,3 +42,16 @@ describe("getRpcUrl", () => {
     }
   });
 });
+
+describe("metadata client retry policy", () => {
+  it("backs off for long enough to outlast a per-second rate limit", async () => {
+    const { METADATA_RPC_RETRY } = await import("./utils/tokenMetadata");
+    // viem waits (2 ** attempt) * retryDelay between attempts, so the total
+    // window before the effect throws (and halts the chain) is the geometric sum.
+    const totalMs = Array.from(
+      { length: METADATA_RPC_RETRY.retryCount },
+      (_, i) => 2 ** i * METADATA_RPC_RETRY.retryDelay
+    ).reduce((a, b) => a + b, 0);
+    expect(totalMs).toBeGreaterThanOrEqual(60_000);
+  });
+});
