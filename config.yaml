@@ -153,6 +153,15 @@ chains:
   #     settings below keep the batches inside a metered provider's budget, and
   #     the fallback (the metadata RPC, ENVIO_ARC_RPC_URL — a different
   #     endpoint from the sync key) takes over when the primary stalls >20s.
+  #  3. No PositionManager here. Its Transfer/Subscription/Unsubscription are
+  #     chain-wide and cannot be topic-filtered to NFTX positions, and each one
+  #     costs a block fetch plus (for `from`) a transaction fetch over RPC —
+  #     ~85k events in Arc's first 12h with no NFTX pool on the chain at all,
+  #     which is what turned the backfill into a stream of 429s. Nothing NFTX
+  #     serves reads Position/Transfer rows (the API takes LP state from the
+  #     StateView contract); the Locker and the filtered PoolManager events
+  #     are the whole product on this chain. Restore it if that changes, and
+  #     budget the RPC for it.
   #  2. The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
   #     0x3600…0000), not an 18-decimal ETH wrapper, so this chain's
   #     `derivedETH` and every *Token0/1 amount is denominated in USDC. The
@@ -179,9 +188,8 @@ chains:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      - name: PositionManager
-        address:
-          - 0x6049c9a0e26405c0985f9e3685c87d0ae917f82b
+      # PositionManager (0x6049c9a0e26405c0985f9e3685c87d0ae917f82b) deliberately
+      # omitted — see (3) above.
       - name: PoolManager
         address:
           - 0x8366a39cc670b4001a1121b8f6a443a643e40951

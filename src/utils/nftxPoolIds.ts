@@ -12,13 +12,15 @@
  * pools, and its Initialize / Swap / ModifyLiquidity events are skipped entirely.
  */
 export const NFTX_POOL_IDS: Record<number, readonly string[]> = {
-  // 6 pools (5 canonical, 1 flex)
+  // 8 pools (6 canonical, 2 flex)
   1: [
     "0x0e660964910a5c4af75309dba8f547a5a4303ac416a3ea54c1a3388cc5f32c91",
     "0x2fab92c6633a3538a3a9025f256e18a4c3925bacb2d66b88f7c03f072ecac7f3",
     "0x365b5b4b72f878ea36330db7191026614bef4d49d9ee645925594912fdfe2831",
     "0x3fdda4b3a94ff01928aef408251738b8190e73a990112235fbac6f9af4eb86dc",
     "0x87b6681f23e615792599a64be55151b0bea86daa42f357ddd2a3eaaee705f569",
+    "0xb14182f794558ba2ec78f8b33b5f279a63730813505edd904923aee4ffe971e7",
+    "0xbe9a04984a2acd37b9623c1266aef9a57d92d43237b6707d182c178e94a51a75",
     "0xc5dc916d83467b3a2a12f13d16ac66d4bd7c96866b6e6dc644ae2405216d06b4",
   ],
   // 4 pools (4 canonical, 0 flex)
@@ -27,6 +29,10 @@ export const NFTX_POOL_IDS: Record<number, readonly string[]> = {
     "0x77d86501db457ee55d9ab69a86a8debe099b031a889cefb6b48238a427b8807b",
     "0xc85fc8f45f79cc23b5327c59611f463721a73b55a48c40dfd0a3e1a74f79416e",
     "0xcf08c985e82f49de2440073626d8a69c75bf29f4086d7c678a6fbbda60161efb",
+  ],
+  // 1 pool (1 canonical, 0 flex)
+  5042: [
+    "0x2223a6d1152a94ab8a0977eaa2d41f3979f08803a1749cc95d1680d3c1c5ed0f",
   ],
   // 14 pools (14 canonical, 0 flex)
   11155111: [
