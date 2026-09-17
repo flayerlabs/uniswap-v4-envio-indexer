@@ -1,24 +1,8 @@
 /*
- * NFTX pool creation.
- *
- * Uniswap's own `Initialize` is emitted by the PoolManager singleton, so
- * indexing it meant creating a Pool row and two Token rows — each Token costing
- * an RPC round trip for its metadata — for every v4 pool on every chain. That
- * had grown to ~472k Pool rows and ~255k Token rows to serve NFTX's two dozen
- * pools, and Arc alone was opening ~109k pools a day.
- *
- * Initialize is filtered to the same NFTX pool ids as Swap/ModifyLiquidity, so
- * their Pool row exists before the initial deposit. NFTX's own later events
- * discover new pools, but must not overwrite an already-funded pool:
- *
- *   - `Locker.CollectionInitialized` for canonical pools. It carries the
- *     abi-encoded PoolKey, so currencies, fee, tickSpacing and hooks all come
- *     from the event; the pool id is the keccak of those same bytes.
- *   - `NFTXFlexHook.FlexPoolInitialized` for flex pools, which hands us the pool
- *     id and the decoded key directly.
- *
- * Neither carries the opening tick the way Uniswap's event does, so it is
- * recovered from the price (see getTickAtSqrtPrice).
+ * Discover every pool using a deployed NFTX hook. PoolManager.Initialize runs
+ * before the seed ModifyLiquidity, so canonical and flex pools are accounted
+ * from their first deposit. Unrelated hooks are rejected before metadata reads.
+ * Locker/flex creation events remain idempotent discovery acknowledgements.
  */
 
 import { indexer, BigDecimal, type EvmOnEventContext, type Pool } from "envio";
@@ -30,7 +14,7 @@ import { findNativePerToken } from "../utils/pricing";
 import { sanitizeBD } from "../utils";
 import { getTickAtSqrtPrice } from "../utils/tickFromSqrtPrice";
 import { updatePoolDayData, updatePoolHourData } from "../utils/intervalUpdates";
-import { nftxPoolIds } from "../utils/nftxPools";
+import { isNftxHook } from "../utils/nftxHooks";
 
 /** The five static words of an abi-encoded v4 PoolKey. */
 interface DecodedPoolKey {
@@ -93,6 +77,9 @@ const createNftxPool = async (
   key: DecodedPoolKey,
   sqrtPriceX96: bigint,
 ): Promise<void> => {
+  // Reject unrelated pools before any entity reads or token metadata RPCs.
+  // Hook identity is also checked on the Locker/flex discovery paths.
+  if (!isNftxHook(event.chainId, key.hooks)) return;
   // CollectionInitialized follows the seed deposit in the same transaction.
   // Returning before any writes also prevents duplicate token/manager counts
   // and resetting the opening hour/day buckets.
@@ -366,10 +353,6 @@ indexer.onEvent(
   {
     contract: "PoolManager",
     event: "Initialize",
-    where: ({ chain }) => {
-      const ids = nftxPoolIds(chain.id);
-      return ids.length ? { params: [{ id: ids }] } : false;
-    },
   },
   async ({ event, context }) => {
     await createNftxPool(context, event, event.params.id, {

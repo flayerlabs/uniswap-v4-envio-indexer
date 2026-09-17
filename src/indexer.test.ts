@@ -9,9 +9,9 @@
  * start_block (25638238) — the test harness rejects an earlier range outright.
  *
  * Every fixture here uses a real NFTX pool, because that is all the indexer sees:
- * Initialize / Swap / ModifyLiquidity are filtered to the pool allowlist,
- * and Locker / flex-hook discovery is idempotent. Foreign pools in the same blocks are
- * dropped before a handler runs, which is the point of the design.
+ * Initialize selects our hooks, and Locker / flex-hook discovery is idempotent.
+ * Foreign pools in the same blocks reach handlers but never create Pool, Tick,
+ * Swap or ModifyLiquidity entities.
  */
 
 import { describe, it } from "vitest";
@@ -25,7 +25,7 @@ describe("Uniswap V4 Indexer", () => {
     const indexer = createTestIndexer();
 
     // Block 25703423 carries four ModifyLiquidity events. Three are on other
-    // people's pools and never reach a handler; the fourth is NFTX pool
+    // people's pools and are ignored by the handler; the fourth is NFTX pool
     // 0x0e660964…, whose CollectionInitialized landed ~12k blocks earlier and so
     // is outside this range. The handler must cope with the Pool row being
     // absent — that is what makes a late start_block safe — and write no Ticks.
@@ -35,7 +35,7 @@ describe("Uniswap V4 Indexer", () => {
           1: { startBlock: 25703423, endBlock: 25703423 },
         },
       }),
-      "an allowlisted pool with no prior creation event yields no Tick entities, and the three foreign pools in the same block are filtered out entirely"
+      "pools with no prior NFTX creation event yield no Tick entities"
     ).toMatchInlineSnapshot(`
       {
         "changes": [
@@ -110,7 +110,7 @@ describe("Uniswap V4 Indexer", () => {
             },
             "block": 25703423,
             "chainId": 1,
-            "eventsProcessed": 4,
+            "eventsProcessed": 36,
           },
         ],
       }
@@ -123,7 +123,7 @@ describe("Uniswap V4 Indexer", () => {
     // 25691611 is where Locker.CollectionInitialized opens NFTX pool
     // 0x0e660964…; the next ~90 blocks carry 90 swaps on it, all inside one hour
     // bucket. So the buckets have to accumulate rather than reset, hour and day
-    // must agree. The filtered Initialize creates the pool before its deposit;
+    // must agree. Initialize creates our pool before its deposit;
     // the later Locker event must not reset its opening bucket.
     const result: any = await indexer.process({
       chains: { 1: { startBlock: 25691611, endBlock: 25691700 } },
