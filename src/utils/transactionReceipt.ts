@@ -19,8 +19,8 @@
  *     fetches again instead of replaying the failure.
  */
 import { createEffect, S } from "envio";
-import { getAddress, type Hash } from "viem";
-import { getRpcClient } from "./tokenMetadata";
+import { createPublicClient, getAddress, http, type Hash, type PublicClient } from "viem";
+import { getRpcUrl, METADATA_RPC_RETRY } from "./tokenMetadata";
 import { getChainConfig } from "./chains";
 import { NFTX_EVENT_BY_TOPIC } from "./nftxEvents";
 
@@ -83,8 +83,25 @@ export class ReceiptMismatchError extends Error {
   }
 }
 
+const receiptClients: Record<number, PublicClient> = {};
+
+/**
+ * One request per receipt, never a JSON-RPC batch. The metadata client
+ * batches, and when the preload pass fires several receipt calls at once viem
+ * folded them into a single HTTP batch that eth.drpc.org answers with a 500.
+ * The effect's own rate limit (5/s) already spaces the calls out.
+ */
+const getReceiptClient = (chainId: number): PublicClient => {
+  if (!receiptClients[chainId]) {
+    receiptClients[chainId] = createPublicClient({
+      transport: http(getRpcUrl(chainId), { batch: false, ...METADATA_RPC_RETRY }),
+    });
+  }
+  return receiptClients[chainId];
+};
+
 const rpcReceiptSource: ReceiptSource = async ({ chainId, hash }) => {
-  const client = getRpcClient(chainId);
+  const client = getReceiptClient(chainId);
   try {
     return await client.getTransactionReceipt({ hash: hash as Hash });
   } catch (error) {
