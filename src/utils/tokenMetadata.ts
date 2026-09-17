@@ -144,8 +144,12 @@ export const getRpcClient = (chainId: number): PublicClient => {
         batch: {
           multicall: true,
         },
+        // No HTTP batching: eth.drpc.org answers 500 to any JSON-RPC batch
+        // longer than one, and the preload pass reads several tokens at once.
+        // `batch.multicall` above still folds one token's five reads into a
+        // single eth_call.
         transport: http(getRpcUrl(chainId), {
-          batch: true,
+          batch: false,
           ...METADATA_RPC_RETRY,
         }),
       });
