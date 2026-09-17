@@ -20,6 +20,7 @@ describe("initial pool reserves", () => {
     expect(deposits).toHaveLength(1);
     expect(deposits[0]?.amount0.toString()).toBe("1.994991739332266005");
     expect(deposits[0]?.amount1.toString()).toBe("1.695742978432426104");
+    expect(deposits[0]?.origin.toLowerCase()).toBe("0x77872babbcd6c8c4633639484a7ece4d4aa57d77");
 
     await indexer.process({ chains: { 1: { startBlock: 25997034, endBlock: 25997168 } } });
     const swapped = await indexer.Pool.getOrThrow(id);

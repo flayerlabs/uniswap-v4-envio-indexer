@@ -9,6 +9,7 @@ import {
 import { convertTokenToDecimal, sanitizeBD } from "../utils";
 import { createInitialTick } from "../utils/tick";
 import { getChainConfig } from "../utils/chains";
+import { getTransactionSender } from "../utils/transactionSender";
 import {
   loadPoolIntervals,
   updatePoolDayData,
@@ -58,7 +59,7 @@ indexer.onEvent(
 
   // `intervals` is loaded here, not at the point of use: Envio only batches
   // `context.*.get()` calls made before the `isPreload` return below.
-  const [existingToken0, existingToken1, bundle, existingPoolManager, existingHookStats, intervals] =
+  const [existingToken0, existingToken1, bundle, existingPoolManager, existingHookStats, intervals, origin] =
     await Promise.all([
       context.Token.get(existingPool.token0),
       context.Token.get(existingPool.token1),
@@ -68,6 +69,7 @@ indexer.onEvent(
       ),
       hookStatsId ? context.HookStats.get(hookStatsId) : undefined,
       loadPoolIntervals(context, poolId, event.block.timestamp),
+      context.effect(getTransactionSender, { chainId: event.chainId, hash: event.transaction.hash }),
     ]);
   if (!existingToken0 || !existingToken1 || !bundle) return;
 
@@ -236,7 +238,7 @@ indexer.onEvent(
     token0_id: token0.id,
     token1_id: token1.id,
     sender: event.params.sender,
-    origin: event.transaction.from || "NONE",
+    origin,
     amount: event.params.liquidityDelta,
     amount0: amount0,
     amount1: amount1,

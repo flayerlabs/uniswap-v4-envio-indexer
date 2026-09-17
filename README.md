@@ -159,8 +159,10 @@ but that field is not an indexed topic, and Swap/ModifyLiquidity do not include
 it at all. These three event streams are therefore read without a pool-id topic
 filter. Initialize rejects unrelated hooks before metadata RPCs or entity reads;
 Swap/ModifyLiquidity return after one Pool lookup for unknown pools. Only NFTX
-pools create accounting entities. Source ingestion and, on RPC chains such as
-Arc, transaction lookups are still higher than with the old static allowlist.
+pools create accounting entities. Source log ingestion is still higher than with the old static allowlist.
+PoolManager events request only the transaction hash; a cached, rate-limited
+effect resolves sender attribution after recognizing an NFTX pool. This avoids
+fetching every unrelated transaction body on RPC-only Arc.
 Do not reintroduce a snapshot of pool ids as an ingestion filter: it silently
 omits new pools' deposits and swaps. Any future source-filter optimization must
 discover pools automatically and include their first transaction.
