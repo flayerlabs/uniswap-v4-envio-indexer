@@ -3,6 +3,7 @@
  */
 import { indexer, BigDecimal, type Swap } from "envio";
 import { getChainConfig } from "../utils/chains";
+import { getTransactionSender } from "../utils/transactionSender";
 import { convertTokenToDecimal } from "../utils";
 import { getTrackedAmountUSD, getNativePriceInUSD } from "../utils/pricing";
 import { safeDiv, sanitizeBD } from "../utils/index";
@@ -26,9 +27,10 @@ indexer.onEvent(
   if (!pool) return;
   const chainConfig = getChainConfig(event.chainId);
 
-  let [poolManager, bundle, ethPriceUSD] = await Promise.all([
+  let [poolManager, bundle, origin, ethPriceUSD] = await Promise.all([
     context.PoolManager.get(`${event.chainId}_${event.srcAddress}`),
     context.Bundle.get(event.chainId.toString()),
+    context.effect(getTransactionSender, { chainId: event.chainId, hash: event.transaction.hash }),
     getNativePriceInUSD(
       context,
       event.chainId.toString(),
@@ -295,7 +297,7 @@ indexer.onEvent(
     token0_id: token0.id,
     token1_id: token1.id,
     sender: event.params.sender,
-    origin: event.transaction.from || "NONE",
+    origin,
     amount0: amount0,
     amount1: amount1,
     amountUSD: sanitizeBD(finalAmountUSD),

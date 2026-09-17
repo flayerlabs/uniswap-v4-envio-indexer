@@ -132,7 +132,7 @@ const clients: Record<number, PublicClient> = {};
 export const METADATA_RPC_RETRY = { retryCount: 6, retryDelay: 1_000 } as const;
 
 // Get client for a specific chain
-const getClient = (chainId: number): PublicClient => {
+export const getRpcClient = (chainId: number): PublicClient => {
   if (!clients[chainId]) {
     try {
       // Create a simpler client configuration
@@ -221,7 +221,7 @@ async function fetchTokenMetadataMulticall(
   chainId: number,
   context: { cache: boolean; log: { warn: (msg: string) => void } }
 ): Promise<TokenMetadata> {
-  const client = getClient(chainId);
+  const client = getRpcClient(chainId);
   const contract = getContract({
     address,
     abi: ERC20_ABI,

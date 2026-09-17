@@ -11,15 +11,15 @@ contracts:
     events:
       - event: Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)
       - event: ModifyLiquidity(bytes32 indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)
-        field_selection: # Additional fields available to index to augment data
+        # Sender attribution is fetched only after the handler finds our pool.
+        field_selection:
           transaction_fields:
             - "hash"
-            - "from"
       - event: Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)
-        field_selection: # Additional fields available to index to augment data
+        # Sender attribution is fetched only after the handler finds our pool.
+        field_selection:
           transaction_fields:
             - "hash"
-            - "from"
   # NFTX creation events are idempotent acknowledgements: they must never reset
   # reserves that Initialize/ModifyLiquidity already set.
   - name: NFTXLocker
@@ -137,14 +137,10 @@ chains:
   #     only), so this chain syncs over plain RPC. ENVIO_RPC_URL_5042 must point
   #     at an endpoint that can take it: Arc produces a block every ~0.5s
   #     (~170k/day) and the public node will rate-limit under sustained sync.
-  #     Over RPC the `from` in transaction_fields costs one
-  #     eth_getTransactionByHash per Swap/ModifyLiquidity (free on HyperSync),
-  #     through a loader that retries every 5s without backoff — so a
-  #     compute-unit cap shows up as a stream of 429 "Top level promise
-  #     timeout" errors that slow the sync rather than break it. The paging
-  #     settings below keep the batches inside a metered provider's budget, and
-  #     the fallback (the metadata RPC, ENVIO_ARC_RPC_URL — a different
-  #     endpoint from the sync key) takes over when the primary stalls >20s.
+  #     PoolManager events request only the transaction hash. Sender details
+  #     are fetched by a cached effect after recognizing an NFTX pool, so
+  #     unrelated swaps/deposits never trigger eth_getTransactionByHash calls.
+  #     The paging settings below bound log batches and retain the fallback.
   #  3. No PositionManager here. Its Transfer/Subscription/Unsubscription are
   #     chain-wide and cannot be topic-filtered to NFTX positions, and each one
   #     costs a block fetch plus (for `from`) a transaction fetch over RPC —
