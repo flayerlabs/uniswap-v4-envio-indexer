@@ -59,7 +59,11 @@ export const getRpcUrl = (chainId: number): string => {
     case 1:
       return process.env.ENVIO_MAINNET_RPC_URL || "https://eth.drpc.org";
     case 11155111:
-      return process.env.ENVIO_SEPOLIA_RPC_URL || "https://sepolia.drpc.org";
+      // sepolia.drpc.org answers every call with "chain is not available on
+      // free plan" (2026-09-17), which crash-looped the hosted deployment on
+      // its first Sepolia receipt. publicnode returns null for receipts older
+      // than its pruning window; Tenderly's public gateway serves them all.
+      return process.env.ENVIO_SEPOLIA_RPC_URL || "https://sepolia.gateway.tenderly.co";
     case 42161:
       return process.env.ENVIO_ARBITRUM_RPC_URL || "https://arbitrum.drpc.org";
     case 10:

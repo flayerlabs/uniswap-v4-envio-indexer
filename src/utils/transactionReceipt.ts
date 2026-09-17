@@ -207,7 +207,9 @@ export const getTransactionReceipt = createEffect(
     } catch (error) {
       // Never persist a failure: the next run must try the node again.
       context.cache = false;
-      context.log.error(`Receipt for ${input.hash} on chain ${input.chainId} could not be replayed`, error as Error);
+      // The hosted log viewer shows only the message, so the cause goes in it.
+      const cause = error instanceof Error ? `${error.name}: ${error.message.split("\n")[0]}` : String(error);
+      context.log.error(`Receipt for ${input.hash} on chain ${input.chainId} could not be replayed: ${cause}`, error as Error);
       throw error;
     }
   },
