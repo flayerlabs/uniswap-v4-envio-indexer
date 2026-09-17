@@ -1,3 +1,26 @@
+# One row per transaction whose receipt has been replayed into pool accounting.
+# Every subscribed NFTX event is only a trigger; several of them land in one
+# transaction (the canonical creation emits two PoolStateUpdated and one
+# CollectionInitialized), and this row is what makes the second and later
+# triggers no-ops. It is rolled back with everything else on a reorg, so a
+# re-included transaction is replayed afresh.
+type IndexedTransaction {
+  id: ID! # <chainId>_<txHash>
+  chainId: BigInt!
+  hash: String!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  origin: String! # receipt `from`, the EOA every Swap/ModifyLiquidity in it is attributed to
+  triggerLogIndex: BigInt! # the subscribed log that caused the replay
+  poolLogs: BigInt! # PoolManager Initialize/ModifyLiquidity/Swap logs on NFTX pools applied from the receipt
+}
+
+# USD/ETH-denominated fields (`amountUSD`, `volumeUSD`, `feesUSD`, `derivedETH`,
+# `totalValueLockedETH/USD`, `tvlUSD`, `Bundle.ethPriceUSD`, HookStats USD totals,
+# PoolManager ETH/USD totals) are always 0. The upstream pricing graph needed a
+# chain-wide view of pools it no longer has; consumers price the raw token
+# amounts themselves. The fields stay so existing queries keep resolving.
+
 type Swap  @index(fields: ["pool", ["timestamp", "DESC"]]) {
   id: ID!
   chainId: BigInt!
@@ -130,6 +153,11 @@ type HookStats {
   totalFeesUSD: BigDecimal! # Total fees across all pools using this hook
 }
 
+# Position / Transfer / Subscribe / Unsubscribe are no longer written: the
+# PositionManager subscription that fed them was chain-wide (its Transfer cannot
+# be topic-filtered to NFTX positions) and nothing NFTX serves reads them — the
+# API takes LP ownership and state from the StateView contract. The types stay
+# so existing queries keep resolving; their tables are empty on a fresh deploy.
 type Position {
   id: ID! # <chainId>_<tokenId>
   chainId: BigInt!

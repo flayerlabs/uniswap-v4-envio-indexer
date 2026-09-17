@@ -1,53 +1,39 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
 # touch: trigger Envio deployment (2026-08-28 #1)
 name: uniswap-v4-indexer
+# Every subscribed event is only a trigger: the handler fetches the transaction
+# receipt and replays the PoolManager logs in it. The hash is all it needs.
+field_selection:
+  transaction_fields:
+    - hash
+# Nothing here is a Uniswap contract. The PoolManager is a chain-wide singleton
+# whose Swap/ModifyLiquidity logs do not carry the hook and whose Initialize log
+# carries it only in the data, so subscribing to it means ingesting every pool on
+# the chain to keep a handful. Our hooks, by contrast, emit a state event after
+# every initialize/swap/add/remove on every pool they serve, from a fixed
+# address per chain. Those events (plus the two creation events) are the whole
+# subscription; the PoolManager activity behind them is read from the receipt.
+#
+# Consequences: no pool-id allowlist, no chain-wide log stream, and an unrelated
+# transaction never reaches a handler or costs an RPC call. Adding a hook
+# deployment means adding its address to the chain below AND to
+# src/utils/nftxHooks.ts (the receipt replay admits only pools on a listed hook).
 contracts:
-  # Initialize admits only our deployed hooks in its handler, before fetching
-  # token metadata. Swap/ModifyLiquidity then account only for discovered pools.
-  # These events share a singleton emitter and the hook is not an indexed topic:
-  # ingest them without a pool-id filter so new pools work without a redeploy.
-  # Unhandled PoolManager events remain excluded.
-  - name: PoolManager
-    events:
-      - event: Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)
-      - event: ModifyLiquidity(bytes32 indexed id, address indexed sender, int24 tickLower, int24 tickUpper, int256 liquidityDelta, bytes32 salt)
-        # Sender attribution is fetched only after the handler finds our pool.
-        field_selection:
-          transaction_fields:
-            - "hash"
-      - event: Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)
-        # Sender attribution is fetched only after the handler finds our pool.
-        field_selection:
-          transaction_fields:
-            - "hash"
-  # NFTX creation events are idempotent acknowledgements: they must never reset
-  # reserves that Initialize/ModifyLiquidity already set.
   - name: NFTXLocker
     events:
-      # Canonical pools. `_poolKey` is the abi-encoded PoolKey; its keccak is the pool id.
+      # Canonical pool creation. Fires after the seed deposit in the same
+      # transaction as PoolManager.Initialize, so the replay sees creation first.
       - event: CollectionInitialized(address indexed _collection, bytes _poolKey, uint256[] _tokenIds, uint256 _sqrtPriceX96, address _sender)
+  - name: NFTXV4Hook
+    events:
+      # Emitted after initialize, swap, add and remove on every canonical pool.
+      - event: PoolStateUpdated(address indexed _collection, uint160 _sqrtPriceX96, int24 _tick, uint24 _protocolFee, uint24 _swapFee, uint128 _liquidity)
   - name: NFTXFlexHook
     events:
-      # Flex pools: a collection token paired with a whitelisted token rather than
-      # the chain's quote token, under a different hook. Carries the id and key.
+      # Emitted from beforeInitialize; the pool's first deposit may be a later tx.
       - event: FlexPoolInitialized(bytes32 indexed _poolId, address indexed _collectionToken, address indexed _pairToken, (address,address,uint24,int24,address) _key, uint160 _sqrtPriceX96)
-  - name: PositionManager
-    events:
-      - event: Subscription(uint256 indexed tokenId, address indexed subscriber)
-        field_selection:
-          transaction_fields:
-            - "hash"
-            - "from"
-      - event: Transfer(address indexed from, address indexed to, uint256 indexed id)
-        field_selection:
-          transaction_fields:
-            - "hash"
-            - "from"
-      - event: Unsubscription(uint256 indexed tokenId, address indexed subscriber)
-        field_selection:
-          transaction_fields:
-            - "hash"
-            - "from"
+      # Emitted after swap, add and remove on every flex pool.
+      - event: FlexPoolStateUpdated(bytes32 indexed _poolId, uint160 _sqrtPriceX96, int24 _tick, uint24 _protocolFee, uint24 _swapFee, uint128 _liquidity)
 # This fork exists to serve NFTX's Uniswap v4 pool data, so it indexes exactly the
 # six chains NFTX v4 is deployed on. Every chain's `start_block` is the NFTX
 # protocol deployment on that chain — not the PoolManager deployment and not
@@ -55,12 +41,9 @@ contracts:
 # are created after the protocol lands. The blocks are copied verbatim from the
 # NFTX indexer (Flayer/Subgraph/config.yaml) so the two stay aligned.
 #
-# Events from pools initialised before the start block are skipped by the handlers
-# (`Pool` entity absent -> early return), not mis-indexed. One consequence is that
-# each chain's stablecoin/native pricing anchor pool predates the start block, so
-# `Bundle.ethPriceUSD` stays 0 and every USD-denominated field with it. That is
-# accepted: NFTX reads only the ETH-denominated fields (sqrtPrice, volumeToken0/1,
-# totalValueLockedToken0/1).
+# The hook and Locker addresses are CREATE3 deployments and identical on every
+# chain. The PoolManager address per chain lives in src/utils/chains.ts; it is
+# what the receipt replay matches logs against.
 chains:
   # Ethereum mainnet. The v3 protocol generation (nftx.v3 salt namespace) was
   # deployed across blocks 25638238-25638272; PoolManager itself landed at
@@ -71,33 +54,27 @@ chains:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      # The flex hook is mainnet-only today; its own deployment block, well after
-      # the chain start_block above.
+      - name: NFTXV4Hook
+        address:
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
+      # The flex hook is mainnet-only today. It was deployed at 25933487, well
+      # after the chain start_block; no per-contract start_block because
+      # HyperSync filters by address server-side (the empty range is free) and
+      # because the test harness rejects a contract start_block that differs
+      # from the chain's when it simulates events.
       - name: NFTXFlexHook
-        start_block: 25933487
         address:
           - 0xC26A5Cb51b1818F62a4C6693a9a1feDB3340efc4
-      - name: PositionManager
-        address:
-          - 0xbD216513d74C8cf14cf4747E6AaA6420FF64ee9e
-      - name: PoolManager
-        address:
-          - "0x000000000004444c5dc75cB358380D2e3dE08A90"
   # Ethereum Sepolia. The protocol deployment spans blocks 11465794-11465822.
-  # Sepolia has no v4 pool whose price tracks the real ETH market, so its
-  # `stablecoinWrappedNativePoolId` is left unset in src/utils/chains.ts.
   - id: 11155111
     start_block: 11465794
     contracts:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      - name: PositionManager
+      - name: NFTXV4Hook
         address:
-          - 0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4
-      - name: PoolManager
-        address:
-          - 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
   # Robinhood Chain — Arbitrum Nitro (Orbit), native currency ETH. The deployment
   # spans blocks 35354594-35354959; pinned 100 below the first receipt because
   # HyperSync filters by address server-side, so an over-wide range is nearly free.
@@ -107,12 +84,9 @@ chains:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      - name: PositionManager
+      - name: NFTXV4Hook
         address:
-          - 0x58daec3116aae6d93017baaea7749052e8a04fa7
-      - name: PoolManager
-        address:
-          - 0x8366a39cc670b4001a1121b8f6a443a643e40951
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
   # Ink — OP-stack L2 (Kraken). No v4 Ink subgraph exists on The Graph, so this is
   # the only pool-data source for the chain. Deployment spans 54329001-54329039;
   # PoolManager landed at 4580556, ~50M blocks earlier.
@@ -122,12 +96,9 @@ chains:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      - name: PositionManager
+      - name: NFTXV4Hook
         address:
-          - 0x1b35d13a2e2528f192637f14b05f0dc0e7deb566
-      - name: PoolManager
-        address:
-          - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
   # Arc (5042) — Circle's USDC-native L1. Uniswap's own deployment predates NFTX
   # here too; the NFTX core landed across 21129174-21129248.
   #
@@ -137,28 +108,17 @@ chains:
   #     only), so this chain syncs over plain RPC. ENVIO_RPC_URL_5042 must point
   #     at an endpoint that can take it: Arc produces a block every ~0.5s
   #     (~170k/day) and the public node will rate-limit under sustained sync.
-  #     PoolManager events request only the transaction hash. Sender details
-  #     are fetched by a cached effect after recognizing an NFTX pool, so
-  #     unrelated swaps/deposits never trigger eth_getTransactionByHash calls.
-  #     The paging settings below bound log batches and retain the fallback.
-  #  3. No PositionManager here. Its Transfer/Subscription/Unsubscription are
-  #     chain-wide and cannot be topic-filtered to NFTX positions, and each one
-  #     costs a block fetch plus (for `from`) a transaction fetch over RPC —
-  #     ~85k events in Arc's first 12h with no NFTX pool on the chain at all,
-  #     which is what turned the backfill into a stream of 429s. Nothing NFTX
-  #     serves reads Position/Transfer rows (the API takes LP state from the
-  #     StateView contract); the Locker and the hook-scoped PoolManager accounting
-  #     are the whole product on this chain. Restore it if that changes, and
-  #     budget the RPC for it.
+  #     The sync only asks for logs from the two NFTX addresses below, and the
+  #     receipt effect (src/utils/transactionReceipt.ts) is what reads the
+  #     PoolManager activity behind them — one eth_getTransactionReceipt per
+  #     NFTX transaction, never one per foreign swap. The paging settings below
+  #     bound log batches and retain the fallback.
   #  2. The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
-  #     0x3600…0000), not an 18-decimal ETH wrapper, so this chain's
-  #     `derivedETH` and every *Token0/1 amount is denominated in USDC. The
-  #     NFTX indexer carries the matching 1e12 lift for its own ETH-wei fields
-  #     (Flayer/Subgraph src/lib/currency.ts NATIVE_SCALE); nothing here needs
-  #     it, because these are raw token amounts and Token.decimals already says
-  #     6. `Bundle.ethPriceUSD` stays 0 as on every other chain (see above) —
-  #     which on Arc happens to be the one chain where it could have been
-  #     derived for free, since native IS the stablecoin.
+  #     0x3600…0000), not an 18-decimal ETH wrapper, so every *Token0/1 amount
+  #     is denominated in USDC. The NFTX indexer carries the matching 1e12 lift
+  #     for its own ETH-wei fields (Flayer/Subgraph src/lib/currency.ts
+  #     NATIVE_SCALE); nothing here needs it, because these are raw token
+  #     amounts and Token.decimals already says 6.
   - id: 5042
     start_block: 21129174
     rpc:
@@ -176,11 +136,9 @@ chains:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      # PositionManager (0x6049c9a0e26405c0985f9e3685c87d0ae917f82b) deliberately
-      # omitted — see (3) above.
-      - name: PoolManager
+      - name: NFTXV4Hook
         address:
-          - 0x8366a39cc670b4001a1121b8f6a443a643e40951
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
   # Arbitrum One — Nitro, native currency ETH. Deployment spans
   # 498892378-498892454; PoolManager landed at 297842872, ~200M blocks earlier.
   - id: 42161
@@ -189,9 +147,6 @@ chains:
       - name: NFTXLocker
         address:
           - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
-      - name: PositionManager
+      - name: NFTXV4Hook
         address:
-          - 0xd88f38f930b7952f2db2432cb002e7abbf3dd869
-      - name: PoolManager
-        address:
-          - 0x360e68faccca8ca495c1b759fd9eee466db9fb32
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4

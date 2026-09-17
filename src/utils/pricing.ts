@@ -1,13 +1,18 @@
-import { BigDecimal, type EvmOnEventContext, type Pool, type Token } from "envio";
+/*
+ * Exchange-ratio math. This is all that is left of the upstream pricing graph:
+ * derivedETH / USD valuation needed a chain-wide view of pools that the
+ * indexer no longer has, and NFTX's consumers price the raw token amounts
+ * themselves. Every USD/ETH-denominated field is written as 0.
+ */
+import { BigDecimal, type Token } from "envio";
 
 import { exponentToBigDecimal, safeDiv } from "../utils/index";
-
-type handlerContext = EvmOnEventContext;
-import { ADDRESS_ZERO, ONE_BD, ZERO_BD, ZERO_BI } from "./constants";
+import { ADDRESS_ZERO } from "./constants";
 import { NativeTokenDetails } from "./nativeTokenDetails";
 
 const Q192 = BigInt(2) ** BigInt(192);
 
+/** [token0 per token1, token1 per token0] at a sqrt price, decimal-adjusted. */
 export function sqrtPriceX96ToTokenPrices(
   sqrtPriceX96: bigint,
   token0: Token,
@@ -28,192 +33,4 @@ export function sqrtPriceX96ToTokenPrices(
 
   const price0 = safeDiv(new BigDecimal("1"), price1);
   return [price0, price1];
-}
-
-export async function getNativePriceInUSD(
-  context: handlerContext,
-  chainId: string,
-  stablecoinWrappedNativePoolId: string,
-  stablecoinIsToken0: boolean
-): Promise<BigDecimal> {
-  const poolId = `${chainId}_${stablecoinWrappedNativePoolId}`;
-  const stablecoinWrappedNativePool = await context.Pool.get(poolId);
-
-  if (stablecoinWrappedNativePool) {
-    return stablecoinIsToken0
-      ? stablecoinWrappedNativePool.token0Price
-      : stablecoinWrappedNativePool.token1Price;
-  }
-  return ZERO_BD;
-}
-
-/**
- * A pool may only set a token's price when the value it implies for the token
- * side is consistent with the pool's verifiable (whitelisted) side.
- *
- * The bound is empirical, not an AMM invariant — v4 concentrated liquidity
- * legitimately allows lopsided pools (one-sided range orders, wide-range
- * launch overhangs valued at spot). Measured across all organically traded
- * one-sided pools on the production indexer (2,584 pools with >=500 txs above
- * the pricing threshold, 2026-07-14): 96% sit below 10x, 99.6% below 100x,
- * 99.9% below 1000x, and NONE between 1e4x and 1e6x — while every observed
- * poison pool sits at 7.6e3x-1e24x. 1000x cuts through the empty band with
- * ~7x margin to the nearest junk and one-in-a-thousand impact on real pools.
- * Without this guard an attacker passes minimumNativeLocked with ~1 ETH, sets
- * an absurd price with one swap, and (optionally) withdraws — freezing a junk
- * derivedETH that inflates TVL/volume USD everywhere the token appears. With
- * it, faking $X of value requires depositing ~$X/1000 of real capital.
- */
-export const MAX_PRICING_POOL_VALUE_IMBALANCE = new BigDecimal("1000");
-
-/**
- * Search through graph to find derived Eth per token.
- * @todo update to be derived ETH (add stablecoin estimates)
- **/
-export async function findNativePerToken(
-  context: handlerContext,
-  token: Token,
-  wrappedNativeAddress: string,
-  stablecoinAddresses: string[],
-  minimumNativeLocked: BigDecimal
-): Promise<BigDecimal> {
-  const tokenAddress = token.id.split("_")[1]!;
-  const chainId = token.id.split("_")[0]!; // Make sure this is being used for Bundle lookup
-
-  if (tokenAddress == wrappedNativeAddress || tokenAddress == ADDRESS_ZERO) {
-    return ONE_BD;
-  }
-
-  const whiteList = token.whitelistPools;
-  let largestLiquidityETH = ZERO_BD;
-  let priceSoFar = ZERO_BD;
-
-  const bundle = await context.Bundle.get(chainId);
-  if (!bundle) return ZERO_BD;
-
-  if (stablecoinAddresses.includes(tokenAddress)) {
-    priceSoFar = safeDiv(ONE_BD, bundle.ethPriceUSD);
-  } else {
-    // Pool IDs already include chainId since we store them that way in whitelistPools
-    const pools = await Promise.all(
-      whiteList.map((poolAddress) => context.Pool.get(poolAddress))
-    );
-
-    const tokenFetches: {
-      pool: Pool;
-      tokenId: string;
-      isToken0: boolean;
-    }[] = [];
-    for (const pool of pools) {
-      if (pool && pool.liquidity > ZERO_BI) {
-        const poolToken0 = pool.token0.split("_")[1];
-        const poolToken1 = pool.token1.split("_")[1];
-        if (poolToken0 == tokenAddress) {
-          tokenFetches.push({ pool, tokenId: pool.token1, isToken0: false });
-        }
-        if (poolToken1 == tokenAddress) {
-          tokenFetches.push({ pool, tokenId: pool.token0, isToken0: true });
-        }
-      }
-    }
-    const tokens = await Promise.all(
-      tokenFetches.map((f) => context.Token.get(f.tokenId))
-    );
-
-    for (const [i, { pool, isToken0 }] of tokenFetches.entries()) {
-      const token = tokens[i];
-      if (token) {
-        const ethLocked = isToken0
-          ? pool.totalValueLockedToken0.times(token.derivedETH)
-          : pool.totalValueLockedToken1.times(token.derivedETH);
-        const candidatePrice = isToken0
-          ? pool.token0Price.times(token.derivedETH)
-          : pool.token1Price.times(token.derivedETH);
-        // Value the candidate price implies for OUR token's side of the pool.
-        // Reject prices that value it far beyond the pool's verifiable side —
-        // see MAX_PRICING_POOL_VALUE_IMBALANCE.
-        const ourSideBalance = isToken0
-          ? pool.totalValueLockedToken1
-          : pool.totalValueLockedToken0;
-        const impliedOurSideETH = ourSideBalance.times(candidatePrice);
-        const withinImbalanceBound = impliedOurSideETH.lte(
-          ethLocked.times(MAX_PRICING_POOL_VALUE_IMBALANCE)
-        );
-        if (
-          ethLocked.gt(largestLiquidityETH) &&
-          ethLocked.gt(minimumNativeLocked) &&
-          withinImbalanceBound
-        ) {
-          largestLiquidityETH = ethLocked;
-          priceSoFar = candidatePrice;
-        }
-      }
-    }
-  }
-  return priceSoFar;
-}
-
-/**
- * Accepts tokens and amounts, return tracked amount based on token whitelist
- * If one token on whitelist, return amount in that token converted to USD * 2.
- * If both are, return sum of two amounts
- * If neither is, return 0
- */
-export async function getTrackedAmountUSD(
-  context: handlerContext,
-  tokenAmount0: BigDecimal,
-  token0: Token,
-  tokenAmount1: BigDecimal,
-  token1: Token,
-  chainId: string,
-  whitelistTokens: string[]
-): Promise<BigDecimal> {
-  const bundle = await context.Bundle.get(chainId);
-  if (!bundle) return ZERO_BD;
-
-  const price0USD = token0.derivedETH.times(bundle.ethPriceUSD);
-  const price1USD = token1.derivedETH.times(bundle.ethPriceUSD);
-
-  // Strip chainId prefix from token ids for whitelist comparison
-  const token0Address = token0.id.split("_")[1]!;
-  const token1Address = token1.id.split("_")[1]!;
-
-  // both are whitelist tokens, return sum of both amounts
-  if (
-    whitelistTokens.includes(token0Address) &&
-    whitelistTokens.includes(token1Address)
-  ) {
-    return tokenAmount0.times(price0USD).plus(tokenAmount1.times(price1USD));
-  }
-
-  // take double value of the whitelisted token amount
-  if (
-    whitelistTokens.includes(token0Address) &&
-    !whitelistTokens.includes(token1Address)
-  ) {
-    return tokenAmount0.times(price0USD).times(new BigDecimal("2"));
-  }
-
-  // take double value of the whitelisted token amount
-  if (
-    !whitelistTokens.includes(token0Address) &&
-    whitelistTokens.includes(token1Address)
-  ) {
-    return tokenAmount1.times(price1USD).times(new BigDecimal("2"));
-  }
-
-  // neither token is on white list, tracked amount is 0
-  return ZERO_BD;
-}
-
-export function calculateAmountUSD(
-  amount0: BigDecimal,
-  amount1: BigDecimal,
-  token0DerivedETH: BigDecimal,
-  token1DerivedETH: BigDecimal,
-  ethPriceUSD: BigDecimal
-): BigDecimal {
-  return amount0
-    .times(token0DerivedETH.times(ethPriceUSD))
-    .plus(amount1.times(token1DerivedETH.times(ethPriceUSD)));
 }

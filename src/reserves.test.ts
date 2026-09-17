@@ -1,3 +1,9 @@
+/**
+ * Live replay against Ethereum mainnet (HyperSync for the triggers, RPC for the
+ * receipts and token metadata). Needs ENVIO_API_TOKEN. The expected numbers are
+ * the on-chain deltas of the transactions named; hookActivity.test.ts asserts
+ * the same figures offline from the stored receipts.
+ */
 import { describe, expect, it } from "vitest";
 import { BigDecimal, createTestIndexer } from "envio";
 
@@ -7,8 +13,9 @@ describe("initial pool reserves", () => {
   it("discovers position 406489's new flex pool and records its first deposit without a pool list", async () => {
     const indexer = createTestIndexer();
     const id = "1_0x7169c13961289ed8b9fc790ca5f7187246b8b769d347e57643df223f41de7000";
-    // FlexPoolInitialized at log 40, Initialize at 41, ModifyLiquidity at 45.
-    // This pool did not exist in the former generated allowlist.
+    // Tx 0xf5839651…: FlexPoolInitialized at log 40, Initialize at 41,
+    // ModifyLiquidity at 45, FlexPoolStateUpdated at 46. Both hook events
+    // trigger; the receipt is replayed once.
     await indexer.process({ chains: { 1: { startBlock: 25997033, endBlock: 25997033 } } });
     const pool = await indexer.Pool.getOrThrow(id);
     // A second transaction swaps this pool later in the same block.
@@ -21,6 +28,11 @@ describe("initial pool reserves", () => {
     expect(deposits[0]?.amount0.toString()).toBe("1.994991739332266005");
     expect(deposits[0]?.amount1.toString()).toBe("1.695742978432426104");
     expect(deposits[0]?.origin.toLowerCase()).toBe("0x77872babbcd6c8c4633639484a7ece4d4aa57d77");
+    expect(deposits[0]?.transaction).toBe("0xf5839651438c871a86af38bae176be9be5ac682bdff74916f8a0eea13996a4f7");
+    expect(deposits[0]?.logIndex).toBe(45n);
+    const indexed = (await indexer.IndexedTransaction.getAll()).filter((entry) => entry.blockNumber === 25997033n);
+    expect(indexed.map((entry) => entry.hash)).toContain("0xf5839651438c871a86af38bae176be9be5ac682bdff74916f8a0eea13996a4f7");
+    expect(indexed).toHaveLength(2);
 
     await indexer.process({ chains: { 1: { startBlock: 25997034, endBlock: 25997168 } } });
     const swapped = await indexer.Pool.getOrThrow(id);
@@ -42,12 +54,16 @@ describe("initial pool reserves", () => {
       entry.hooks.toLowerCase() === "0xaa49adadd33c5e953b645567afb10cbbba63afc4" ||
       entry.hooks.toLowerCase() === "0xc26a5cb51b1818f62a4c6693a9a1fedb3340efc4"
     )).toBe(true);
-  }, 120000);
+    // Every swap row came out of a replayed receipt.
+    const replayed = new Set((await indexer.IndexedTransaction.getAll()).map((entry) => entry.hash));
+    expect(swaps.every((swap) => replayed.has(swap.transaction))).toBe(true);
+  }, 300000);
 
   it("records the deposit before the later Locker event and retains it through the first swap", async () => {
     const indexer = createTestIndexer();
     // Real creation tx 0x8acd2da0…c403f0: Initialize at log 355,
-    // ModifyLiquidity at 363, funding transfers at 365/366, Locker event at 373.
+    // PoolStateUpdated at 356, ModifyLiquidity at 363, PoolStateUpdated at
+    // 364, CollectionInitialized at 373. Three triggers, one replay.
     await indexer.process({ chains: { 1: { startBlock: 25653470, endBlock: 25653470 } } });
     const pool = await indexer.Pool.getOrThrow(POOL);
     expect(pool.totalValueLockedToken0.toString()).toBe("16.157399999999999999");
@@ -58,6 +74,7 @@ describe("initial pool reserves", () => {
     // The later NFTX event must not create a second pool or reset its reserves.
     const managers = await indexer.PoolManager.getAll();
     expect(managers.reduce((count, manager) => count + manager.poolCount, 0n)).toBe(1n);
+    expect(await indexer.IndexedTransaction.getAll()).toHaveLength(1);
 
     await indexer.process({ chains: { 1: { startBlock: 25653471, endBlock: 25653471 } } });
     const swapped = await indexer.Pool.getOrThrow(POOL);
@@ -65,5 +82,5 @@ describe("initial pool reserves", () => {
     expect(swapped.totalValueLockedToken1.toString()).toBe("41.491036709139377338");
     expect(swapped.totalValueLockedToken0.gt(new BigDecimal(0))).toBe(true);
     expect(swapped.totalValueLockedToken1.gt(new BigDecimal(0))).toBe(true);
-  }, 120000);
+  }, 300000);
 });

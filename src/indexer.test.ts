@@ -3,15 +3,15 @@
  *
  * Uses HyperIndex's createTestIndexer() to replay real chain events through
  * the handlers and snapshot the resulting entity changes. See
- * .claude/skills/testing/SKILL.md for conventions.
+ * .claude/skills/indexer-testing/SKILL.md for conventions. Needs
+ * ENVIO_API_TOKEN (HyperSync) and reaches the public mainnet RPC for receipts.
  *
  * Blocks are drawn from Ethereum mainnet at or after this chain's configured
  * start_block (25638238) — the test harness rejects an earlier range outright.
  *
- * Every fixture here uses a real NFTX pool, because that is all the indexer sees:
- * Initialize selects our hooks, and Locker / flex-hook discovery is idempotent.
- * Foreign pools in the same blocks reach handlers but never create Pool, Tick,
- * Swap or ModifyLiquidity entities.
+ * Only NFTX's own contracts are subscribed, so a block with no NFTX activity
+ * delivers no events at all, and every receipt the handlers fetch belongs to a
+ * transaction that touched an NFTX pool.
  */
 
 import { describe, it } from "vitest";
@@ -21,101 +21,33 @@ const abs = (v: BigDecimal) =>
   v.lt(new BigDecimal("0")) ? v.times(new BigDecimal("-1")) : v;
 
 describe("Uniswap V4 Indexer", () => {
-  it("Does not create Ticks for ModifyLiquidity on a pool it has not seen created", async (t) => {
+  it("Sees nothing in a block with only foreign pool activity", async (t) => {
     const indexer = createTestIndexer();
 
-    // Block 25703423 carries four ModifyLiquidity events. Three are on other
-    // people's pools and are ignored by the handler; the fourth is NFTX pool
-    // 0x0e660964…, whose CollectionInitialized landed ~12k blocks earlier and so
-    // is outside this range. The handler must cope with the Pool row being
-    // absent — that is what makes a late start_block safe — and write no Ticks.
-    t.expect(
-      await indexer.process({
-        chains: {
-          1: { startBlock: 25703423, endBlock: 25703423 },
-        },
-      }),
-      "pools with no prior NFTX creation event yield no Tick entities"
-    ).toMatchInlineSnapshot(`
-      {
-        "changes": [
-          {
-            "Position": {
-              "sets": [
-                {
-                  "chainId": 1n,
-                  "createdAtTimestamp": 1786109711n,
-                  "id": "1_365990",
-                  "origin": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
-                  "owner": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
-                  "tokenId": 365990n,
-                },
-                {
-                  "chainId": 1n,
-                  "createdAtTimestamp": 1786109711n,
-                  "id": "1_365991",
-                  "origin": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
-                  "owner": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
-                  "tokenId": 365991n,
-                },
-                {
-                  "chainId": 1n,
-                  "createdAtTimestamp": 1786109711n,
-                  "id": "1_365992",
-                  "origin": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
-                  "owner": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
-                  "tokenId": 365992n,
-                },
-              ],
-            },
-            "Transfer": {
-              "sets": [
-                {
-                  "chainId": 1n,
-                  "from": "0x0000000000000000000000000000000000000000",
-                  "id": "1_25703423_559",
-                  "logIndex": 559n,
-                  "origin": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
-                  "position_id": "1_365990",
-                  "timestamp": 1786109711n,
-                  "to": "0x743BD1f2498ca0545bFbd977E5DDddd52f4eaD72",
-                  "tokenId": 365990n,
-                  "transaction": "0x353b331f6f226717156382ea95c69ffbca39e40937e6c74752c13ea2030a76de",
-                },
-                {
-                  "chainId": 1n,
-                  "from": "0x0000000000000000000000000000000000000000",
-                  "id": "1_25703423_842",
-                  "logIndex": 842n,
-                  "origin": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
-                  "position_id": "1_365991",
-                  "timestamp": 1786109711n,
-                  "to": "0x2403D4F74a1A5E29fFEBAe64dfAB963C0c690ae6",
-                  "tokenId": 365991n,
-                  "transaction": "0x0aeca8c5851495d1aa14dc2a6e6c00f9831105e383fd0511f4dc55bd9b5ab13c",
-                },
-                {
-                  "chainId": 1n,
-                  "from": "0x0000000000000000000000000000000000000000",
-                  "id": "1_25703423_983",
-                  "logIndex": 983n,
-                  "origin": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
-                  "position_id": "1_365992",
-                  "timestamp": 1786109711n,
-                  "to": "0xB8A70b4d1547bf6193bd67A73F4F98ea9FD0A973",
-                  "tokenId": 365992n,
-                  "transaction": "0xb1b929f366e8e9be9823efebfbef09804fff9770399f3491f1aeaa6b16550bc5",
-                },
-              ],
-            },
-            "block": 25703423,
-            "chainId": 1,
-            "eventsProcessed": 36,
-          },
-        ],
-      }
-    `);
-  });
+    // Block 25703423 carries four ModifyLiquidity events on the PoolManager and
+    // three PositionManager mints. Three deposits are on other people's pools;
+    // the fourth is NFTX pool 0x0e660964…, whose CollectionInitialized landed
+    // ~12k blocks earlier — but that deposit's own PoolStateUpdated is what
+    // would trigger a replay, and it is what this range delivers. So this block
+    // must yield exactly that one pool's deposit and nothing else; in
+    // particular no Position/Transfer rows and no Tick for a foreign pool.
+    const result = await indexer.process({
+      chains: {
+        1: { startBlock: 25703423, endBlock: 25703423 },
+      },
+    });
+    const entities = new Set(
+      result.changes.flatMap((change) => Object.keys(change).filter((key) => !["block", "chainId", "eventsProcessed", "addresses"].includes(key)))
+    );
+    t.expect(entities.has("Position"), "PositionManager is no longer indexed").toBe(false);
+    t.expect(entities.has("Transfer"), "PositionManager is no longer indexed").toBe(false);
+    t.expect(entities.has("Tick"), "a deposit on a pool created before the range has no Pool row and writes nothing").toBe(false);
+    t.expect(entities.has("ModifyLiquidity")).toBe(false);
+    // The trigger fired and the receipt was replayed, but its pool is unknown
+    // to this fresh database, so the only row is the transaction marker.
+    t.expect([...entities]).toEqual(["IndexedTransaction"]);
+    t.expect(result.changes.reduce((n, change) => n + change.eventsProcessed, 0)).toBe(1);
+  }, 300000);
 
   it("Accumulates swap volume and OHLC into the hour and day buckets", async (t) => {
     const indexer = createTestIndexer();
@@ -177,5 +109,11 @@ describe("Uniswap V4 Indexer", () => {
     // txCount counts every event that touched the pool, not just swaps, so it
     // is at least the swap count.
     t.expect(Number(latestHour.txCount)).toBeGreaterThanOrEqual(swaps.length);
-  }, 300000);
+
+    // Every swap was attributed from its receipt: original hash and sender.
+    const replayed = new Set(collect("IndexedTransaction").map((tx: any) => tx.hash));
+    t.expect(swaps.every((s: any) => replayed.has(s.transaction))).toBe(true);
+    t.expect(swaps.every((s: any) => /^0x[0-9a-fA-F]{40}$/.test(s.origin))).toBe(true);
+    t.expect(collect("Position")).toEqual([]);
+  }, 600000);
 });

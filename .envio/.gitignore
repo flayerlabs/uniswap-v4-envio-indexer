@@ -1,2 +1,4 @@
 # Ephemeral codegen output. Add other .envio entries here as needed.
 types.d.ts
+# Receipts are re-fetched on a clean run; never ship a local receipt cache.
+cache/getTransactionReceipt.tsv
