@@ -139,86 +139,42 @@ Upstream is [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4
 - [Discord community](https://discord.com/invite/envio)
 - [Envio Docs](https://docs.envio.dev)
 
-## Pool creation and initial reserves
+## Automatic NFTX pool discovery
 
-For allowlisted NFTX pools, `PoolManager.Initialize` creates the pool before its
-first `ModifyLiquidity` event. This ordering is required to record the initial
-deposit. The Initialize filter uses the same pool ids as Swap and ModifyLiquidity,
-so unrelated Uniswap pools do not trigger entity creation or metadata RPC calls.
+`PoolManager.Initialize` creates every pool whose hook is a deployed NFTX hook
+in `src/utils/nftxHooks.ts`, before its first `ModifyLiquidity` event. There is no
+pool-id allowlist, regeneration step, or `ENVIO_NFTX_EXTRA_POOL_IDS` override.
+Currencies, pool price, and whether a token has a USD quote do not affect indexing.
+New canonical and flex pools start accumulating reserves and volume immediately.
 
-NFTX's own `Locker.CollectionInitialized` and `NFTXFlexHook.FlexPoolInitialized`
-events still discover new pools. Creation is idempotent: these later events must
-not reset an existing pool, its reserves, counters, or opening interval buckets.
-Canonical pool ids are derived from the emitted abi-encoded PoolKey; flex events
-provide the id directly. The opening tick is recovered from `sqrtPriceX96`.
+NFTX's `Locker.CollectionInitialized` and `NFTXFlexHook.FlexPoolInitialized`
+events remain idempotent: they cannot reset a funded pool or its opening buckets.
+The API prices the indexed token amounts independently on a best-effort basis.
+Missing USD pricing is not a reason to omit a pool's raw balances or events.
 
-A new pool outside the allowlist gets metadata through NFTX's events, but its
-liquidity and swap accounting are incomplete until the allowlist is refreshed and
-history is replayed. Do not treat its zero balances as verified reserves.
+### Ingestion cost
 
-### Why the historical replay is necessary
+Uniswap's PoolManager is a singleton. Initialize includes the hook in its data,
+but that field is not an indexed topic, and Swap/ModifyLiquidity do not include
+it at all. These three event streams are therefore read without a pool-id topic
+filter. Initialize rejects unrelated hooks before metadata RPCs or entity reads;
+Swap/ModifyLiquidity return after one Pool lookup for unknown pools. Only NFTX
+pools create accounting entities. Source ingestion and, on RPC chains such as
+Arc, transaction lookups are still higher than with the old static allowlist.
+Do not reintroduce a snapshot of pool ids as an ingestion filter: it silently
+omits new pools' deposits and swaps. Any future source-filter optimization must
+discover pools automatically and include their first transaction.
 
-On Ethereum, transaction
-`0x8acd2da088f3e9ec12378943fd086d246eb1fc4d76180047ba3d019400c403f0`
-in block 25653470 emitted Initialize at log 355, the seed ModifyLiquidity at log
-363, and CollectionInitialized at log 373. Creating the pool only at the final
-event lost the initial 16.1574 flETH and 42 collection tokens. Subsequent swaps
-then accumulated from zero, producing negative indexed balances despite a funded
-on-chain pool.
+### Replay required when replacing the allowlist
 
-`src/reserves.test.ts` replays that transaction and the first swap. It verifies
-both opening reserves, the liquidity record, and that later NFTX events do not
-reset balances or duplicate the pool count.
+Deploy into a fresh database and replay from each configured start block. A
+restart at the chain head cannot recover deposits previously excluded by the
+allowlist. Before switching API consumers, verify synchronization and reserves.
 
-Deploy this fix into a fresh database and replay from every configured start
-block. Restarting the old database at the chain head cannot recover omitted
-deposits. Before switching consumers, wait for synchronization, verify the seed
-liquidity record and current reserves, and query all pools for negative balances.
-Keep the API's invalid-reserve protection even after the replay.
-
-## The NFTX pool allowlist
-
-The Uniswap `PoolManager` is a singleton: its `Initialize`, `Swap` and `ModifyLiquidity` events
-carry every v4 pool on the chain, not just ours. Measured against live data, NFTX
-pools are **0.007%** of mainnet swaps and **0.003%** of Robinhood's, and those two
-events are ~99.8% of everything this indexer would otherwise ingest.
-
-All three handlers therefore filter on an allowlist of NFTX pool ids. `id` is an
-indexed topic, so the list is pushed down into the HyperSync/RPC query — the rest
-is never delivered to the indexer and never counted against the event-processing
-quota.
-
-### Refreshing it after a launch
-
-```sh
-pnpm generate:pool-ids   # rewrites src/utils/nftxPoolIds.ts
-```
-
-The generator reads the NFTX indexer, which records each pool's key straight off
-`Locker.CollectionInitialized`, then **re-derives every id from its recorded
-components** and refuses to write if one disagrees. That check is there because
-the derivation has two traps: Uniswap v4 sorts the pair by address, so the
-collection token lands on `currency0` about half the time (12 of our 24 pools as
-of writing), and the hook is part of the key — canonical pools use `NFTXV4Hook`,
-flex pools use `NFTXFlexHook` with a whitelisted pair token instead of the chain's
-quote token. Taking the ids from the indexer rather than assuming a shape is what
-makes both cases fall out for free.
-
-Commit the regenerated file and redeploy.
-
-### Being late is not the same as losing data
-
-A redeploy re-indexes from each chain's `start_block` *through this filter*, so a
-pool added to the list later is backfilled from its own `Initialize`. A stale list
-delays complete liquidity and volume accounting; replay recovers those events.
-
-To index a pool before the next regeneration — a launch that just happened, say —
-set the override on the deployment, no code change needed:
-
-```sh
-ENVIO_NFTX_EXTRA_POOL_IDS="1:0xabc…,0xdef…;11155111:0x123…"
-```
-
-A chain with no entries at all (deployed but nothing launched — Ink, Arbitrum One
-and Arc today) skips `Initialize`, `Swap` and `ModifyLiquidity` outright.
-
+The regression in `src/reserves.test.ts` replays MILADY/WETH position 406489,
+created in block 25997033 by transaction
+`0xf5839651438c871a86af38bae176be9be5ac682bdff74916f8a0eea13996a4f7`.
+Its pool was absent from the old allowlist and appeared with zero reserves.
+The replay must recover 1.994991739332266005 MILADY and 1.695742978432426104 WETH
+at creation, then retain subsequent swaps. The canonical creation regression
+also verifies that the later Locker event cannot erase the seed deposit.

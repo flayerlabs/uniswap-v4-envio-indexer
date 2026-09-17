@@ -2,18 +2,11 @@
 # touch: trigger Envio deployment (2026-08-28 #1)
 name: uniswap-v4-indexer
 contracts:
-  # Initialize is filtered to NFTX pool ids, just like Swap/ModifyLiquidity.
-  # It runs BEFORE initial liquidity is deposited; Locker.CollectionInitialized
-  # runs afterwards and is too late to start reserve accounting. Filtering avoids
-  # creating Pool/Token rows or fetching metadata for unrelated Uniswap pools.
-  #
-  # Only events with handlers are listed. The PoolManager is a singleton that
-  # every v4 pool on the chain emits through, so each event here costs the whole
-  # chain's traffic, not NFTX's share of it — measured on mainnet, NFTX pools are
-  # 0.007% of v4 swaps. The ERC-6909 Approval/Transfer pair, Donate, OperatorSet,
-  # OwnershipTransferred and both ProtocolFee events were indexed with no handler
-  # to receive them, ~8-12% of ingested logs doing nothing. Adding one back means
-  # writing its handler; nothing else here reads them.
+  # Initialize admits only our deployed hooks in its handler, before fetching
+  # token metadata. Swap/ModifyLiquidity then account only for discovered pools.
+  # These events share a singleton emitter and the hook is not an indexed topic:
+  # ingest them without a pool-id filter so new pools work without a redeploy.
+  # Unhandled PoolManager events remain excluded.
   - name: PoolManager
     events:
       - event: Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)
@@ -27,9 +20,8 @@ contracts:
           transaction_fields:
             - "hash"
             - "from"
-  # NFTX's own events also discover newly launched pools before their ids are
-  # allowlisted. For allowlisted pools these are idempotent acknowledgements:
-  # they must never reset reserves that Initialize/ModifyLiquidity already set.
+  # NFTX creation events are idempotent acknowledgements: they must never reset
+  # reserves that Initialize/ModifyLiquidity already set.
   - name: NFTXLocker
     events:
       # Canonical pools. `_poolKey` is the abi-encoded PoolKey; its keccak is the pool id.
@@ -159,7 +151,7 @@ chains:
   #     ~85k events in Arc's first 12h with no NFTX pool on the chain at all,
   #     which is what turned the backfill into a stream of 429s. Nothing NFTX
   #     serves reads Position/Transfer rows (the API takes LP state from the
-  #     StateView contract); the Locker and the filtered PoolManager events
+  #     StateView contract); the Locker and the hook-scoped PoolManager accounting
   #     are the whole product on this chain. Restore it if that changes, and
   #     budget the RPC for it.
   #  2. The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
