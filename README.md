@@ -4,7 +4,7 @@
 
 A multichain Uniswap V4 indexer built with [Envio HyperIndex](https://docs.envio.dev/docs/HyperIndex/overview).
 
-This is Flayer's fork of [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4-indexer) (which powers [v4.xyz](https://v4.xyz)). It is narrowed to serve NFTX's pool data: it indexes the six chains NFTX v4 is deployed on, each from the block the NFTX protocol landed there, reads only the pools on NFTX's own hooks, and it is the sole source of Uniswap v4 volume, price, OHLC and swap data for the NFTX API — there is no Graph subgraph behind it.
+This is Flayer's fork of [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4-indexer) (which powers [v4.xyz](https://v4.xyz)). It is narrowed to serve NFTX's pool data: it indexes the seven chains NFTX v4 is deployed on, each from the block the NFTX protocol landed there, reads only the pools on NFTX's own hooks, and it is the sole source of Uniswap v4 volume, price, OHLC and swap data for the NFTX API — there is no Graph subgraph behind it.
 
 ![v4.xyz Dashboard](./v4.gif)
 
@@ -59,6 +59,7 @@ so existing queries resolve; the tables are empty on a fresh deploy.
 | Ethereum Sepolia | 11155111 | 11465794 | NFTX deploy (11465794-11465822) |
 | Robinhood | 4663 | 35354494 | 100 below NFTX deploy (35354594-35354959) |
 | Ink | 57073 | 54328901 | 100 below NFTX deploy (54329001-54329039) |
+| Base | 8453 | 51475363 | 100 below the NFTX redeploy onto the shared CREATE3 book (51475463-51475487, 2026-09-18); the earlier pre-CREATE3 generation is not indexed |
 | Arc | 5042 | 21129174 | NFTX core deploy (21129174-21129248); RPC sync, no HyperSync |
 | Arbitrum One | 42161 | 498892278 | 100 below NFTX deploy (498892378-498892454) |
 

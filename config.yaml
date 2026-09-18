@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=./node_modules/envio/evm.schema.json
-# touch: trigger Envio deployment (2026-09-17 #5 — pick up the eRPC env vars; src-only pushes do not deploy)
+# touch: trigger Envio deployment (2026-09-18 — index Base mainnet 8453; src-only pushes do not deploy)
 name: uniswap-v4-indexer
 # Every subscribed event is only a trigger: the handler fetches the transaction
 # receipt and replays the PoolManager logs in it. The hash is all it needs.
@@ -35,7 +35,7 @@ contracts:
       # Emitted after swap, add and remove on every flex pool.
       - event: FlexPoolStateUpdated(bytes32 indexed _poolId, uint160 _sqrtPriceX96, int24 _tick, uint24 _protocolFee, uint24 _swapFee, uint128 _liquidity)
 # This fork exists to serve NFTX's Uniswap v4 pool data, so it indexes exactly the
-# six chains NFTX v4 is deployed on. Every chain's `start_block` is the NFTX
+# seven chains NFTX v4 is deployed on. Every chain's `start_block` is the NFTX
 # protocol deployment on that chain — not the PoolManager deployment and not
 # genesis — because only pools that NFTX initialises matter here, and all of them
 # are created after the protocol lands. The blocks are copied verbatim from the
@@ -132,6 +132,21 @@ chains:
         query_timeout_millis: 20000
       - url: ${ENVIO_ARC_RPC_URL:-https://rpc.mainnet.arc.io}
         for: fallback
+    contracts:
+      - name: NFTXLocker
+        address:
+          - 0xb4C5b5235b98114E9DC227b54e088C11680b2385
+      - name: NFTXV4Hook
+        address:
+          - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
+  # Base mainnet. Redeployed onto the shared CREATE3 book on 2026-09-18 across
+  # blocks 51475463-51475487 (protocol release v3.5.0); the first pool —
+  # Prismatic Evolutions, over a Route 24 card wrapper — was initialised the same
+  # day. The pre-CREATE3 generation that preceded it (hook 0x3b47FE7C…afCc) is
+  # deliberately not indexed. PoolManager itself landed long before, so the
+  # start is the NFTX deployment, as everywhere else in this file.
+  - id: 8453
+    start_block: 51475363
     contracts:
       - name: NFTXLocker
         address:

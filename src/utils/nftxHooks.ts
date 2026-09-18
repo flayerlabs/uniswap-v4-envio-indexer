@@ -6,6 +6,7 @@ const FLEX_HOOK = "0xc26a5cb51b1818f62a4c6693a9a1fedb3340efc4";
 
 export const NFTX_HOOKS: Readonly<Record<number, readonly string[]>> = {
   1: [V4_HOOK, FLEX_HOOK],
+  8453: [V4_HOOK],
   11155111: [V4_HOOK],
   4663: [V4_HOOK],
   57073: [V4_HOOK],
