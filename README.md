@@ -4,7 +4,7 @@
 
 A multichain Uniswap V4 indexer built with [Envio HyperIndex](https://docs.envio.dev/docs/HyperIndex/overview).
 
-This is Flayer's fork of [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4-indexer) (which powers [v4.xyz](https://v4.xyz)). It is narrowed to serve NFTX's pool data: it indexes the seven chains NFTX v4 is deployed on, each from the block the NFTX protocol landed there, reads only the pools on NFTX's own hooks, and it is the sole source of Uniswap v4 volume, price, OHLC and swap data for the NFTX API — there is no Graph subgraph behind it.
+This is Flayer's fork of [enviodev/uniswap-v4-indexer](https://github.com/enviodev/uniswap-v4-indexer) (which powers [v4.xyz](https://v4.xyz)). It is narrowed to serve NFTX's pool data: it indexes the eight chains NFTX is deployed on (ApeChain through Armory V3 pools rather than V4), each from the block the NFTX protocol landed there, reads only the pools on NFTX's own hooks, and it is the sole source of Uniswap v4 volume, price, OHLC and swap data for the NFTX API — there is no Graph subgraph behind it.
 
 ![v4.xyz Dashboard](./v4.gif)
 
@@ -44,6 +44,19 @@ serve, from one fixed address per chain, so those events are a complete index
 of the activity that matters. A new pool on a deployed hook is picked up from
 its first transaction with no allowlist and no redeploy.
 
+**ApeChain is the exception.** NFTX there trades on Armory, a byte-level
+Uniswap V3 fork, with no PoolManager and no hook, so a direct Armory trade
+emits nothing from NFTX and the replay above has nothing to read. Instead
+`NFTXArmory.MarketRegistered` (from `Locker.createCollection`) registers the
+collection's one deterministic V3 pool as a dynamic `ArmoryV3Pool` contract,
+and the pool's own `Initialize`/`Swap`/`Mint`/`Burn` logs are indexed, whoever
+sends them (`src/handlers/armory.ts`). They land in the same `Pool`, `Swap`,
+`ModifyLiquidity`, `Tick` and candle rows: the pool id is the pool address
+left-padded to bytes32 (`NFTXArmory.getCollectionPoolId`), `hooks` is the
+`NFTXArmory` market, swap amounts are stored pool-side as on V4, and every
+swap's `fee` is the fixed 1% tier. A pool initialised before its collection was
+registered is seeded from `slot0` at the block before its first indexed log.
+
 **Not indexed any more:** `PositionManager` `Transfer`/`Subscription`/
 `Unsubscription`. They were chain-wide (an ERC-721 `Transfer` cannot be
 topic-filtered to NFTX positions) and nothing NFTX serves reads the
@@ -62,6 +75,7 @@ so existing queries resolve; the tables are empty on a fresh deploy.
 | Base | 8453 | 51475363 | 100 below the NFTX redeploy onto the shared CREATE3 book (51475463-51475487, 2026-09-18); the earlier pre-CREATE3 generation is not indexed |
 | Arc | 5042 | 21129174 | NFTX core deploy (21129174-21129248); RPC sync, no HyperSync |
 | Arbitrum One | 42161 | 498892278 | 100 below NFTX deploy (498892378-498892454) |
+| ApeChain | 33139 | 50820531 | NFTX deploy on Armory V3 (50820531-50820555, 2026-10-01); RPC sync, no HyperSync |
 
 Blocks match the NFTX indexer's pins so the two stay aligned. Only pools NFTX
 initialises matter here and all of them are created after the protocol lands.
@@ -129,9 +143,10 @@ ENVIO_ARBITRUM_RPC_URL=https://your-arbitrum-node
 These serve two effects: `getTransactionReceipt` (one
 `eth_getTransactionReceipt` per NFTX transaction, rate-limited to 5/s, cached)
 and `getTokenMetadata` (name/symbol/decimals via a viem multicall, once per new
-token). Event ingestion itself goes through HyperSync on every chain except Arc,
-which HyperSync does not serve and which `config.yaml` syncs over
-`ENVIO_RPC_URL_5042` instead. Every network in `config.yaml` must have a case in
+token). Event ingestion itself goes through HyperSync on every chain except Arc
+and ApeChain, which HyperSync does not serve and which `config.yaml` syncs over
+`ENVIO_RPC_URL_5042` and `ENVIO_RPC_URL_33139` instead. ApeChain also reads one
+historical `slot0` per pool that was initialised before NFTX registered it. Every network in `config.yaml` must have a case in
 `getRpcUrl` (`src/utils/tokenMetadata.ts`) — without one, the first NFTX
 transaction on that chain throws from the handler and the chain's sync halts.
 `src/rpcUrls.test.ts` enforces this.

@@ -22,8 +22,11 @@ describe("NFTX hook deployments", () => {
     expect(chains.length).toBeGreaterThan(0);
     expect(Object.keys(NFTX_HOOKS).map(Number).sort()).toEqual([...chains].sort());
     for (const chain of chains) {
-      expect(isNftxHook(chain, "0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4")).toBe(true);
+      // ApeChain has no V4: its one NFTX "hook" is the NFTXArmory market (src/utils/armory.ts).
+      expect(isNftxHook(chain, "0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4")).toBe(chain !== 33139);
     }
+    expect(isNftxHook(33139, "0x198DCE74C3F765299a5371F89e45377172042475")).toBe(true);
+    expect(isNftxHook(1, "0x198DCE74C3F765299a5371F89e45377172042475")).toBe(false);
     expect(isNftxHook(1, "0xC26A5Cb51b1818F62a4C6693a9a1feDB3340efc4")).toBe(true);
     expect(isNftxHook(42161, "0xC26A5Cb51b1818F62a4C6693a9a1feDB3340efc4")).toBe(false);
     expect(isNftxHook(999999, "0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4")).toBe(false);

@@ -5,6 +5,7 @@ export enum ChainId {
   MAINNET = 1,
   ARBITRUM_ONE = 42161,
   ARC = 5042,
+  APECHAIN = 33139,
   OPTIMISM = 10,
   BASE = 8453,
   MATIC = 137,
@@ -89,6 +90,26 @@ export const CHAIN_CONFIGS: { [chainId in EvmChainId]: ChainConfig } & {
       symbol: "USDC",
       name: "USD Coin",
       decimals: BigInt(6),
+    },
+  },
+  // ApeChain — NFTX trades on Armory, a Uniswap V3 fork, so there is no V4
+  // PoolManager. `poolManagerAddress` holds the Armory V3 factory, which only
+  // names the PoolManager aggregate row; nothing decodes PoolManager logs here.
+  // The quote side is WAPE, an 18-decimal wrapper around native APE.
+  [ChainId.APECHAIN]: {
+    poolManagerAddress: "0xab52edb039b07b0d64345ea66696871bf33b434f",
+    stablecoinWrappedNativePoolId: "", // pricing is off in this fork; no anchor pool needed
+    stablecoinIsToken0: false,
+    wrappedNativeAddress: "0x48b62137edfa95a428d35c09e44256a739f6b557", // WAPE
+    minimumNativeLocked: new BigDecimal("1"),
+    stablecoinAddresses: [],
+    whitelistTokens: ["0x48b62137edfa95a428d35c09e44256a739f6b557"],
+    tokenOverrides: [],
+    poolsToSkip: [],
+    nativeTokenDetails: {
+      symbol: "APE",
+      name: "ApeCoin",
+      decimals: BigInt(18),
     },
   },
   [ChainId.MAINNET]: {

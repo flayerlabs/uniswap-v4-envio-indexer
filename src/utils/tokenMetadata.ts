@@ -117,6 +117,13 @@ export const getRpcUrl = (chainId: number): string => {
         process.env.ENVIO_RPC_URL_5042 ||
         "https://rpc.mainnet.arc.io"
       );
+    case 33139:
+      // ApeChain has no HyperSync either; same fallback order as Arc.
+      return (
+        process.env.ENVIO_APECHAIN_RPC_URL ||
+        process.env.ENVIO_RPC_URL_33139 ||
+        "https://rpc.apechain.com/http"
+      );
     default:
       throw new Error(`No RPC URL configured for chainId ${chainId}`);
   }
