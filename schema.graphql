@@ -15,6 +15,21 @@ type IndexedTransaction {
   poolLogs: BigInt! # PoolManager Initialize/ModifyLiquidity/Swap logs on NFTX pools applied from the receipt
 }
 
+# ApeChain only: an NFTX collection pool on Armory's Uniswap V3 fork, recorded
+# when NFTXArmory registers the collection and its pool is subscribed. The pool
+# address is deterministic, so this row exists before the pool itself may.
+type ArmoryPool {
+  id: ID! # <chainId>_<pool address>
+  chainId: BigInt!
+  pool: String! # V3 pool address
+  poolId: String! @index # Pool.id suffix: the address left-padded to bytes32 (NFTXArmory.getCollectionPoolId)
+  collection: String! @index # ERC721 collection
+  collectionToken: String!
+  token0: String!
+  token1: String!
+  registeredAtBlock: BigInt!
+}
+
 # USD/ETH-denominated fields (`amountUSD`, `volumeUSD`, `feesUSD`, `derivedETH`,
 # `totalValueLockedETH/USD`, `tvlUSD`, `Bundle.ethPriceUSD`, HookStats USD totals,
 # PoolManager ETH/USD totals) are always 0. The upstream pricing graph needed a

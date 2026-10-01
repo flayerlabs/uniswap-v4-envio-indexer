@@ -28,6 +28,39 @@ contracts:
     events:
       # Emitted after initialize, swap, add and remove on every canonical pool.
       - event: PoolStateUpdated(address indexed _collection, uint160 _sqrtPriceX96, int24 _tick, uint24 _protocolFee, uint24 _swapFee, uint128 _liquidity)
+  # ApeChain only. NFTX trades on Armory (a Uniswap V3 fork) there, with no
+  # PoolManager and no hook, so the receipt replay above does not apply: a direct
+  # Armory trade emits nothing from NFTX. Instead NFTXArmory's registration of a
+  # collection registers that collection's one V3 pool as a dynamic contract
+  # (src/handlers/armory.ts), and the pool's own logs are indexed. A pool is only
+  # ever an NFTX collection pool, so nothing foreign is ingested.
+  - name: NFTXArmory
+    events:
+      - event: MarketRegistered(address indexed _collection, address indexed _token)
+  - name: ArmoryV3Pool
+    events:
+      # `from` attributes each log to its EOA (`origin`); requested per event so
+      # only NFTX pool logs cost a transaction lookup on this RPC-synced chain.
+      - event: Initialize(uint160 sqrtPriceX96, int24 tick)
+        field_selection:
+          transaction_fields:
+            - hash
+            - from
+      - event: Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)
+        field_selection:
+          transaction_fields:
+            - hash
+            - from
+      - event: Mint(address sender, address indexed owner, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount, uint256 amount0, uint256 amount1)
+        field_selection:
+          transaction_fields:
+            - hash
+            - from
+      - event: Burn(address indexed owner, int24 indexed tickLower, int24 indexed tickUpper, uint128 amount, uint256 amount0, uint256 amount1)
+        field_selection:
+          transaction_fields:
+            - hash
+            - from
   - name: NFTXFlexHook
     events:
       # Emitted from beforeInitialize; the pool's first deposit may be a later tx.
@@ -165,3 +198,30 @@ chains:
       - name: NFTXV4Hook
         address:
           - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
+  # ApeChain (33139). NFTX deployed here on 2026-10-01 (blocks 50820531-50820555)
+  # on Armory's Uniswap V3 fork rather than on V4; see the NFTXArmory/ArmoryV3Pool
+  # contracts above. HyperSync does not
+  # serve ApeChain, so like Arc it syncs over plain RPC. ENVIO_RPC_URL_33139 must
+  # be an endpoint that can take that, and should NOT be the shared rpc.flayer.io
+  # gateway: RPC-synced chains exhaust its per-method daily eth_getBlockByNumber
+  # cap. The sync only asks for logs from NFTXArmory and the registered pools.
+  # The NFTX Locker is not subscribed here: its CollectionInitialized only drives
+  # the V4 receipt replay, which has nothing to read on this chain.
+  - id: 33139
+    start_block: 50820531
+    rpc:
+      - url: ${ENVIO_RPC_URL_33139:-https://rpc.apechain.com/http}
+        for: sync
+        initial_block_interval: 1000
+        interval_ceiling: 2000
+        acceleration_additive: 500
+        backoff_multiplicative: 0.5
+        backoff_millis: 2000
+        query_timeout_millis: 20000
+      - url: ${ENVIO_APECHAIN_RPC_URL:-https://rpc.apechain.com/http}
+        for: fallback
+    contracts:
+      - name: NFTXArmory
+        address:
+          - 0x198DCE74C3F765299a5371F89e45377172042475
+      - name: ArmoryV3Pool
