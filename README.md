@@ -38,9 +38,8 @@ reorg.
 Why this shape: the `PoolManager` is a chain-wide singleton. Its
 `Swap`/`ModifyLiquidity` logs carry no hook and its `Initialize` carries the
 hook only in the data, so subscribing to it means ingesting every pool on the
-chain (and, on RPC-only Arc, fetching every foreign transaction) to keep a
-handful. Our hooks emit a state event after every action on every pool they
-serve, from one fixed address per chain, so those events are a complete index
+chain to keep a handful. Our hooks emit a state event after every action on
+every pool they serve, from one fixed address per chain, so those events are a complete index
 of the activity that matters. A new pool on a deployed hook is picked up from
 its first transaction with no allowlist and no redeploy.
 
@@ -73,7 +72,7 @@ so existing queries resolve; the tables are empty on a fresh deploy.
 | Robinhood | 4663 | 35354494 | 100 below NFTX deploy (35354594-35354959) |
 | Ink | 57073 | 54328901 | 100 below NFTX deploy (54329001-54329039) |
 | Base | 8453 | 51475363 | 100 below the NFTX redeploy onto the shared CREATE3 book (51475463-51475487, 2026-09-18); the earlier pre-CREATE3 generation is not indexed |
-| Arc | 5042 | 21129174 | NFTX core deploy (21129174-21129248); RPC sync, no HyperSync |
+| Arc | 5042 | 21129174 | NFTX core deploy (21129174-21129248); HyperSync |
 | Arbitrum One | 42161 | 498892278 | 100 below NFTX deploy (498892378-498892454) |
 | ApeChain | 33139 | 50820531 | NFTX deploy on Armory V3 (50820531-50820555, 2026-10-01); RPC sync, no HyperSync |
 
@@ -143,10 +142,16 @@ ENVIO_ARBITRUM_RPC_URL=https://your-arbitrum-node
 These serve two effects: `getTransactionReceipt` (one
 `eth_getTransactionReceipt` per NFTX transaction, rate-limited to 5/s, cached)
 and `getTokenMetadata` (name/symbol/decimals via a viem multicall, once per new
-token). Event ingestion itself goes through HyperSync on every chain except Arc
-and ApeChain, which HyperSync does not serve and which `config.yaml` syncs over
-`ENVIO_RPC_URL_5042` and `ENVIO_RPC_URL_33139` instead. ApeChain also reads one
-historical `slot0` per pool that was initialised before NFTX registered it. Every network in `config.yaml` must have a case in
+token). Event ingestion itself goes through HyperSync, including Arc, except
+for ApeChain, which `config.yaml` syncs over `ENVIO_RPC_URL_33139` instead.
+Arc uses `https://arc.hypersync.xyz` without an RPC sync fallback. After that
+configuration is deployed, `ENVIO_RPC_URL_5042` can be removed. Keep
+`ENVIO_ARC_RPC_URL` for receipts and token metadata; if the old variable was
+your only Arc override, move its value there to retain your provider for those
+effects. With neither variable, effects use Arc's public RPC. The old variable
+is still accepted as a legacy effects override until removed.
+ApeChain also reads one historical `slot0` per pool that was initialised before
+NFTX registered it. Every network in `config.yaml` must have a case in
 `getRpcUrl` (`src/utils/tokenMetadata.ts`) — without one, the first NFTX
 transaction on that chain throws from the handler and the chain's sync halts.
 `src/rpcUrls.test.ts` enforces this.

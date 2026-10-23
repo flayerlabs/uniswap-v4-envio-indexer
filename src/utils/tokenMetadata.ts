@@ -110,15 +110,15 @@ export const getRpcUrl = (chainId: number): string => {
         process.env.ENVIO_BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org"
       );
     case 5042:
-      // Arc has no HyperSync, so config.yaml also syncs it over RPC from
-      // ENVIO_RPC_URL_5042; reuse that node here unless a dedicated one is set.
+      // Arc syncs through HyperSync, but receipts and token metadata need RPC.
+      // Accept the former sync override for existing deployments until removed.
       return (
         process.env.ENVIO_ARC_RPC_URL ||
         process.env.ENVIO_RPC_URL_5042 ||
         "https://rpc.mainnet.arc.io"
       );
     case 33139:
-      // ApeChain has no HyperSync either; same fallback order as Arc.
+      // ApeChain still syncs through RPC; reuse its sync endpoint if needed.
       return (
         process.env.ENVIO_APECHAIN_RPC_URL ||
         process.env.ENVIO_RPC_URL_33139 ||

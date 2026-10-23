@@ -135,36 +135,21 @@ chains:
   # Arc (5042) — Circle's USDC-native L1. Uniswap's own deployment predates NFTX
   # here too; the NFTX core landed across 21129174-21129248.
   #
-  # Two things differ from every other chain in this file:
+  # HyperSync now serves Arc mainnet. Pin the endpoint explicitly so the
+  # pinned Envio version does not need an updated network registry. No RPC
+  # sync or fallback is configured. The receipt and token-metadata effects
+  # still use ordinary RPC through ENVIO_ARC_RPC_URL or the public node.
   #
-  #  1. HyperSync does NOT serve Arc mainnet (it serves arc-testnet 5042002
-  #     only), so this chain syncs over plain RPC. ENVIO_RPC_URL_5042 must point
-  #     at an endpoint that can take it: Arc produces a block every ~0.5s
-  #     (~170k/day) and the public node will rate-limit under sustained sync.
-  #     The sync only asks for logs from the two NFTX addresses below, and the
-  #     receipt effect (src/utils/transactionReceipt.ts) is what reads the
-  #     PoolManager activity behind them — one eth_getTransactionReceipt per
-  #     NFTX transaction, never one per foreign swap. The paging settings below
-  #     bound log batches and retain the fallback.
-  #  2. The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
-  #     0x3600…0000), not an 18-decimal ETH wrapper, so every *Token0/1 amount
-  #     is denominated in USDC. The NFTX indexer carries the matching 1e12 lift
-  #     for its own ETH-wei fields (Flayer/Subgraph src/lib/currency.ts
-  #     NATIVE_SCALE); nothing here needs it, because these are raw token
-  #     amounts and Token.decimals already says 6.
+  # The pool "native" side is 6-decimal USDC (the ERC20 predeploy at
+  # 0x3600…0000), not an 18-decimal ETH wrapper, so every *Token0/1 amount
+  # is denominated in USDC. The NFTX indexer carries the matching 1e12 lift
+  # for its own ETH-wei fields (Flayer/Subgraph src/lib/currency.ts
+  # NATIVE_SCALE); nothing here needs it, because these are raw token
+  # amounts and Token.decimals already says 6.
   - id: 5042
     start_block: 21129174
-    rpc:
-      - url: ${ENVIO_RPC_URL_5042:-https://rpc.mainnet.arc.io}
-        for: sync
-        initial_block_interval: 1000
-        interval_ceiling: 2000
-        acceleration_additive: 500
-        backoff_multiplicative: 0.5
-        backoff_millis: 2000
-        query_timeout_millis: 20000
-      - url: ${ENVIO_ARC_RPC_URL:-https://rpc.mainnet.arc.io}
-        for: fallback
+    hypersync_config:
+      url: https://arc.hypersync.xyz
     contracts:
       - name: NFTXLocker
         address:
@@ -201,7 +186,7 @@ chains:
   # ApeChain (33139). NFTX deployed here on 2026-10-01 (blocks 50820531-50820555)
   # on Armory's Uniswap V3 fork rather than on V4; see the NFTXArmory/ArmoryV3Pool
   # contracts above. HyperSync does not
-  # serve ApeChain, so like Arc it syncs over plain RPC. ENVIO_RPC_URL_33139 must
+  # serve ApeChain, so it syncs over plain RPC. ENVIO_RPC_URL_33139 must
   # be an endpoint that can take that, and should NOT be the shared rpc.flayer.io
   # gateway: RPC-synced chains exhaust its per-method daily eth_getBlockByNumber
   # cap. The sync only asks for logs from NFTXArmory and the registered pools.
