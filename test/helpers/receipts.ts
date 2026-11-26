@@ -1,7 +1,7 @@
 /*
  * Test support for the receipt replay.
  *
- * Fixtures under test/fixtures/receipts are real mainnet receipts trimmed to
+ * Fixtures under test/fixtures/receipts are real chain receipts trimmed to
  * the PoolManager and NFTX logs (the shape the effect stores). A fixture can be
  * turned back into the subscribed events that fired for it, so a simulated run
  * exercises exactly the trigger→receipt→replay path the live indexer takes,
@@ -16,7 +16,8 @@ import {
   getAddress,
   type Hex,
 } from "viem";
-import { NFTX_EVENT_BY_TOPIC, NFTX_EVENT_CONTRACT, NFTX_EVENTS_ABI } from "../../src/utils/nftxEvents";
+import { NFTX_EVENT_BY_TOPIC, NFTX_EVENT_CONTRACT_BY_TOPIC, NFTX_EVENTS_ABI } from "../../src/utils/nftxEvents";
+import { getChainConfig } from "../../src/utils/chains";
 import { POOL_MANAGER_EVENTS_ABI } from "../../src/utils/poolManagerEvents";
 import { setReceiptSource, type RawReceipt, type ReceiptRequest } from "../../src/utils/transactionReceipt";
 
@@ -58,7 +59,7 @@ export const loadFixture = (hash: string, chainId = 1): ReceiptFixture =>
 /**
  * The subscribed events a receipt would have produced, as simulate items, in
  * log order. The handler reads none of the params, but the harness decodes
- * them, so they are the real ones (with the flex PoolKey in the positional
+ * them, so they are the real ones (with the PoolKey in the positional
  * shape HyperIndex hands tuples over in).
  */
 export const triggersFrom = (fixture: ReceiptFixture) =>
@@ -68,12 +69,12 @@ export const triggersFrom = (fixture: ReceiptFixture) =>
       const event = NFTX_EVENT_BY_TOPIC.get(log.topics[0]!.toLowerCase())!;
       const decoded = decodeEventLog({ abi: NFTX_EVENTS_ABI, data: log.data as Hex, topics: log.topics as [Hex, ...Hex[]] });
       const params: Record<string, unknown> = { ...(decoded.args as Record<string, unknown>) };
-      if (decoded.eventName === "FlexPoolInitialized") {
+      if (decoded.eventName === "FlexPoolInitialized" || decoded.eventName === "PoolInitialized") {
         const key = decoded.args._key;
         params._key = { 0: key.currency0, 1: key.currency1, 2: BigInt(key.fee), 3: BigInt(key.tickSpacing), 4: key.hooks };
       }
       return {
-        contract: NFTX_EVENT_CONTRACT[event],
+        contract: NFTX_EVENT_CONTRACT_BY_TOPIC.get(log.topics[0]!.toLowerCase())!,
         event,
         srcAddress: getAddress(log.address),
         logIndex: log.logIndex,
@@ -86,7 +87,7 @@ export const triggersFrom = (fixture: ReceiptFixture) =>
 /** Every PoolManager log in a fixture, decoded. */
 export const poolManagerLogsOf = (fixture: ReceiptFixture) =>
   fixture.logs
-    .filter((log) => log.address.toLowerCase() === POOL_MANAGER)
+    .filter((log) => log.address.toLowerCase() === getChainConfig(fixture.chainId as Parameters<typeof getChainConfig>[0]).poolManagerAddress.toLowerCase())
     .map((log) => ({
       logIndex: log.logIndex,
       ...decodeEventLog({ abi: POOL_MANAGER_EVENTS_ABI, data: log.data as Hex, topics: log.topics as [Hex, ...Hex[]] }),

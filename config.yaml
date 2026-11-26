@@ -11,7 +11,7 @@ field_selection:
 # carries it only in the data, so subscribing to it means ingesting every pool on
 # the chain to keep a handful. Our hooks, by contrast, emit a state event after
 # every initialize/swap/add/remove on every pool they serve, from a fixed
-# address per chain. Those events (plus the two creation events) are the whole
+# address per chain. Those state and creation events are the whole
 # subscription; the PoolManager activity behind them is read from the receipt.
 #
 # Consequences: no pool-id allowlist, no chain-wide log stream, and an unrelated
@@ -28,6 +28,11 @@ contracts:
     events:
       # Emitted after initialize, swap, add and remove on every canonical pool.
       - event: PoolStateUpdated(address indexed _collection, uint160 _sqrtPriceX96, int24 _tick, uint24 _protocolFee, uint24 _swapFee, uint128 _liquidity)
+  - name: NFTXHook
+    events:
+      # The unified hook uses pool IDs for both canonical and arbitrary pairs.
+      - event: PoolInitialized(bytes32 indexed _poolId, address indexed _collectionToken, address indexed _pairToken, (address,address,uint24,int24,address) _key, uint160 _sqrtPriceX96)
+      - event: PoolStateUpdated(bytes32 indexed _poolId, uint160 _sqrtPriceX96, int24 _tick, uint24 _protocolFee, uint24 _swapFee, uint128 _liquidity)
   # ApeChain only. NFTX trades on Armory (a Uniswap V3 fork) there, with no
   # PoolManager and no hook, so the receipt replay above does not apply: a direct
   # Armory trade emits nothing from NFTX. Instead NFTXArmory's registration of a
@@ -74,8 +79,8 @@ contracts:
 # are created after the protocol lands. The blocks are copied verbatim from the
 # NFTX indexer (Flayer/Subgraph/config.yaml) so the two stay aligned.
 #
-# The hook and Locker addresses are CREATE3 deployments and identical on every
-# chain. The PoolManager address per chain lives in src/utils/chains.ts; it is
+# The legacy hook and Locker addresses are shared CREATE3 deployments; Ink also
+# has newer unified hooks. The PoolManager address lives in src/utils/chains.ts; it is
 # what the receipt replay matches logs against.
 chains:
   # Ethereum mainnet. The v3 protocol generation (nftx.v3 salt namespace) was
@@ -132,6 +137,11 @@ chains:
       - name: NFTXV4Hook
         address:
           - 0xaa49ADaDD33c5E953b645567AFb10CBbba63afC4
+      - name: NFTXHook
+        address:
+          # Keep both unified generations alongside the legacy hook above.
+          - 0x064cf10a93fc2BcfA992819a9140c4DB0a22Afc4
+          - 0xC1595F4277c94FA15C397eCaD787fC0072862FC4
   # Arc (5042) — Circle's USDC-native L1. Uniswap's own deployment predates NFTX
   # here too; the NFTX core landed across 21129174-21129248.
   #

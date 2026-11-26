@@ -150,6 +150,12 @@ indexer.onEvent({ contract: "NFTXLocker", event: "CollectionInitialized" }, ({ e
 indexer.onEvent({ contract: "NFTXV4Hook", event: "PoolStateUpdated" }, ({ event, context }) =>
   replayTransaction(context, event),
 );
+indexer.onEvent({ contract: "NFTXHook", event: "PoolInitialized" }, ({ event, context }) =>
+  replayTransaction(context, event),
+);
+indexer.onEvent({ contract: "NFTXHook", event: "PoolStateUpdated" }, ({ event, context }) =>
+  replayTransaction(context, event),
+);
 indexer.onEvent({ contract: "NFTXFlexHook", event: "FlexPoolInitialized" }, ({ event, context }) =>
   replayTransaction(context, event),
 );

@@ -3,6 +3,10 @@
  * Keep these deployments aligned with the NFTX indexer and API contract books. */
 const V4_HOOK = "0xaa49adadd33c5e953b645567afb10cbbba63afc4";
 const FLEX_HOOK = "0xc26a5cb51b1818f62a4c6693a9a1fedb3340efc4";
+const INK_UNIFIED_HOOKS = [
+  "0x064cf10a93fc2bcfa992819a9140c4db0a22afc4",
+  "0xc1595f4277c94fa15c397ecad787fc0072862fc4",
+] as const;
 /** ApeChain has no hook: NFTXArmory plays its role for Armory V3 pools (src/utils/armory.ts). */
 const ARMORY_MARKET = "0x198dce74c3f765299a5371f89e45377172042475";
 
@@ -11,7 +15,7 @@ export const NFTX_HOOKS: Readonly<Record<number, readonly string[]>> = {
   8453: [V4_HOOK],
   11155111: [V4_HOOK],
   4663: [V4_HOOK],
-  57073: [V4_HOOK],
+  57073: [V4_HOOK, ...INK_UNIFIED_HOOKS],
   5042: [V4_HOOK],
   42161: [V4_HOOK],
   33139: [ARMORY_MARKET],
