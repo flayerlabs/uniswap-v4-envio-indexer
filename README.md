@@ -214,6 +214,11 @@ token orderings, an arbitrary pair token with no price, liquidity removal, a
 transaction that swaps a foreign pool and two NFTX pools at once, duplicate
 triggers, deterministic replay, and receipt retry/mismatch handling.
 
+`src/inkHookActivity.test.ts` replays real Thinkers receipts on Ink: unified
+`PoolInitialized(bytes32,...)` and `PoolStateUpdated(bytes32,...)` triggers,
+both seed deposits and a swap in the creation transaction, then a routed swap.
+It verifies transaction deduplication, foreign-pool exclusion and candle volume.
+
 `src/reserves.test.ts` and `src/indexer.test.ts` replay the same transactions
 live. The MILADY/WETH position 406489 regression (block 25997033, transaction
 `0xf5839651…6a4f7`) must recover 1.994991739332266005 MILADY and
@@ -228,3 +233,19 @@ previous model's rows are compatible, but a restart at the chain head would
 leave every earlier `IndexedTransaction` absent and is not a supported upgrade
 path. Before switching API consumers, verify synchronization and reserves on
 the replacement, then promote it and point the API at it.
+
+### Replay required for unified Ink hooks
+
+Ink subscribes to both unified NFTXHook deployments (`0x064cf10a…Afc4` and
+`0xC1595F42…2FC4`) alongside the legacy NFTXV4Hook. The event signatures differ:
+the unified `PoolStateUpdated` indexes a bytes32 pool ID, not a collection address.
+
+Deploy this change into a fresh database and replay the configured history;
+keep Ink's existing start block so legacy pools remain available. A restart at
+the chain head cannot recover the missing Initialize. In particular, Thinkers
+was initialized at block **62,174,387** in transaction
+`0x9487c83aa3aa0eec678535c825dbe4a2800b8601cb454f7f9b7f8a0eb0746eb6`.
+Before promoting the replacement, verify it is caught up and that
+`Pool_by_pk(id: "57073_0xddc32c9ba17620e87cf62d9d36f1b8ea70c421f36b0672cb5cccb3be2954137d")`
+exists with its Swap, PoolHourData and PoolDayData rows. Clearing API caches
+cannot recreate this missing indexer history.

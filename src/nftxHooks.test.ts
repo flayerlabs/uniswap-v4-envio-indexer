@@ -53,4 +53,14 @@ describe("NFTX hook deployments", () => {
     expect(config).not.toMatch(/name: PoolManager/);
     expect(config).not.toMatch(/name: PositionManager/);
   });
+
+  it("admits both unified Ink deployments only on Ink", () => {
+    for (const hook of [
+      "0x064cf10a93fc2BcfA992819a9140c4DB0a22Afc4",
+      "0xC1595F4277c94FA15C397eCaD787fC0072862FC4",
+    ]) {
+      expect(isNftxHook(57073, hook)).toBe(true);
+      expect(isNftxHook(1, hook)).toBe(false);
+    }
+  });
 });
